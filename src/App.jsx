@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
-import ForecastChart from "./components/ForecastChart";
+import React, { useEffect, useState } from "react";
 import { API_BASE, api } from "./lib.api";
 
 const DBS = [{ value: "demo_air_quality", label: "Air Quality (Demo)" }];
@@ -14,78 +13,59 @@ export default function App(){
   const [city, setCity] = useState("");
   const [cbsa, setCbsa] = useState("");
   const [agg, setAgg] = useState("mean");
-  const [result, setResult] = useState(null);
-  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [status, setStatus] = useState("");
+  const [ready, setReady] = useState(false);
 
-  // load targets when db changes
   useEffect(() => {
-    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setResult(null); setErr("");
+    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setErr(""); setStatus(""); setReady(false);
     api(`/data/${db}/targets`).then(j => setTargets(j.targets || [])).catch(e => setErr(String(e)));
   }, [db]);
 
-  // load filters when target changes
   useEffect(() => {
-    if (!target) { setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); return; }
+    if (!target) { setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setReady(false); return; }
     api(`/data/${db}/filters?target=${encodeURIComponent(target)}`)
       .then(j => setFilters(j.filters || {}))
       .catch(e => setErr(String(e)));
   }, [db, target]);
 
-  const runForecast = async () => {
-    setErr(""); setLoading(true); setResult(null);
+  const runClassical = async () => {
+    setErr(""); setStatus(""); setReady(false);
     try {
       if (!db) throw new Error("Select a database");
       if (!target) throw new Error("Select a target variable");
       if (!stateName) throw new Error("Select a State Name");
-      const qs = new URLSearchParams({
-        state: stateName,
-        parameter: target,
-        agg,
-        h: "30",
-        method: "seasonal_naive_dow"
-      }).toString();
-      const res = await fetch(`${API_BASE}/forecast/state_daily?${qs}`);
-      if (!res.ok) throw new Error(await res.text());
-      const json = await res.json();
-      setResult(json);
+
+      // Preflight
+      setStatus("Preparing… (checking data)");
+      const qsProbe = new URLSearchParams({ db, target_value: target, state: stateName, agg }).toString();
+      const info = await api(`/classical/probe?${qsProbe}`);
+      setStatus(`Ready: ${info.rows} rows from ${info.start_date} to ${info.end_date} · Est. ${info.est_months} months / ${info.est_quarters} quarters.`);
+
+      // Show download button
+      setReady(true);
     } catch (e) {
       setErr(String(e));
-    } finally {
-      setLoading(false);
+      setStatus("");
     }
   };
 
-  const onDownloadTarget = () => {
-    if (!target) { setErr("Select a target variable"); return; }
-    const qs = new URLSearchParams({
-      db,
-      target_value: target,
-      state: stateName || "",
-      county: county || "",
-      city: city || "",
-      cbsa: cbsa || "",
-      agg,
-      forecast_type: "F"
-    }).toString();
-    window.location.href = `${API_BASE}/classical/export_target?${qs}`;
-  };
-
-  const onDownloadClassical = () => {
-    if (!target || !stateName) { setErr("Select a target and state"); return; }
-    const qs = new URLSearchParams({
-      db,
-      target_value: target,
-      state: stateName,
-      agg,
-      forecast_type: "F"
-    }).toString();
+  const downloadClassical = () => {
+    const qs = new URLSearchParams({ db, target_value: target, state: stateName, agg, forecast_type: "F" }).toString();
     window.location.href = `${API_BASE}/classical/export_classical?${qs}`;
+    // keep status visible; user sees file download
   };
 
   return (
     <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
-      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.4</span></h1>
+      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.5</span></h1>
+
+      {status && (
+        <div style={{ margin:"10px 0", padding:"8px 12px", background:"#111827", border:"1px solid #374151", borderRadius:10, fontSize:14 }}>
+          {status}
+        </div>
+      )}
+
       <div style={{ display:"grid", gap:12, gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))" }}>
         <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
           <h3>1) Database</h3>
@@ -139,30 +119,22 @@ export default function App(){
             <option value="mean">Mean (daily)</option>
             <option value="sum">Sum (daily)</option>
           </select>
-          <div style={{ fontSize:12, opacity:.8, marginTop:6 }}>Horizon/method fixed for now.</div>
         </div>
       </div>
 
       <div style={{ marginTop:16, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-        <button onClick={runForecast} disabled={loading} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#3b82f6", color:"#fff", border:"1px solid #1d4ed8" }}>
-          {loading ? "Running…" : "Run Forecast"}
+        <button onClick={runClassical} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#3b82f6", color:"#fff", border:"1px solid #1d4ed8" }}>
+          Run Forecast
         </button>
-        <button onClick={onDownloadTarget} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#10b981", color:"#001", border:"1px solid #0b7664" }}>
-          Download Target CSV
-        </button>
-        <button onClick={onDownloadClassical} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#f59e0b", color:"#001", border:"1px solid #b45309" }}>
-          Download Classical CSV
-        </button>
+        {ready && (
+          <button onClick={downloadClassical} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#f59e0b", color:"#001", border:"1px solid #b45309" }}>
+            Download Classical CSV
+          </button>
+        )}
         <span style={{ fontSize:12, opacity:.8 }}>Backend: {API_BASE}</span>
       </div>
 
       {err && <div style={{ marginTop:12, color:"#ef4444" }}>Error: {err}</div>}
-
-      {result && (
-        <div style={{ marginTop:16 }}>
-          <ForecastChart data={result} title={`${stateName || "All"} — ${target} (${agg})`} />
-        </div>
-      )}
     </div>
   );
 }
