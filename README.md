@@ -1,14 +1,11 @@
-# TSF Frontend v1.3
+# TSF Frontend v1.4
 
-## Deploy on Render (Static Site)
 - Build: `npm install && npm run build`
 - Publish directory: `dist`
 
-## Use
-1) Choose Database (demo_air_quality).
-2) Choose Target Variable (loaded from DB).
-3) Choose State Name (from filters).
+Flow:
+1) Choose Database.
+2) Choose Target Variable (from backend).
+3) Choose filters: State (required for forecasting), optional County/City/CBSA.
 4) Choose Aggregation (mean/sum).
-5) Click **Run Forecast**.
-
-API base is fixed in `src/lib.api.js` (adjust if your backend URL changes).
+5) Run forecast (chart) or click **Download Target CSV** / **Download Classical CSV**.

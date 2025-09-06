@@ -1,5 +1,6 @@
-## v1.3.0 — 2025-09-06
-- Add DB + Target selection powered by new backend endpoints.
-- Load filter values (State Name) dynamically; require state to run forecast.
-- Add aggregation selector (mean/sum).
-- Render forecast/history chart with Recharts.
+## v1.4.0 — 2025-09-06
+- Add County/City/CBSA filter inputs (with datalist suggestions from backend /filters).
+- Add Download buttons:
+  - **Target CSV** → /classical/export_target (DATE, VALUE; spec filename).
+  - **Classical CSV** → /classical/export_classical (spec columns; spec filename).
+- Keep chart; no visual changes required for downloads.
