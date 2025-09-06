@@ -1,4 +1,5 @@
-## v1.2 — 2025-09-06
-- Added ForecastChart component with Recharts line chart.
-- Calls backend forecast API for Colorado NO₂ (30-day).
-- Updated App.jsx and styling.
+## v1.3.0 — 2025-09-06
+- Add DB + Target selection powered by new backend endpoints.
+- Load filter values (State Name) dynamically; require state to run forecast.
+- Add aggregation selector (mean/sum).
+- Render forecast/history chart with Recharts.

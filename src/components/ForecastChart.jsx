@@ -1,49 +1,24 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
-const API_BASE = "https://tsf-forecast-dev-backend.onrender.com";
-
-export default function ForecastChart() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchForecast() {
-      try {
-        const res = await fetch(
-          `${API_BASE}/forecast/state_daily?state=Colorado&parameter=NO2&h=30&method=seasonal_naive_dow`
-        );
-        const json = await res.json();
-        if (json.history && json.forecast) {
-          const combined = [
-            ...json.history.map(d => ({ ...d, type: "history" })),
-            ...json.forecast.map(d => ({ ...d, type: "forecast" }))
-          ];
-          setData(combined);
-        }
-      } catch (err) {
-        console.error("Error fetching forecast:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchForecast();
-  }, []);
-
-  if (loading) return <p>Loading forecast...</p>;
-
+export default function ForecastChart({ data, title }){
+  if (!data || (!data.history && !data.forecast)) return null;
+  const combined = [
+    ...(data.history || []).map(d => ({ ...d, type: "History" })),
+    ...(data.forecast || []).map(d => ({ ...d, type: "Forecast" })),
+  ];
   return (
-    <div>
-      <h2>Forecast: Colorado NO₂</h2>
-      <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data}>
+    <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
+      <h2 style={{ marginTop:0 }}>{title || "Forecast"}</h2>
+      <ResponsiveContainer width="100%" height={380}>
+        <LineChart data={combined}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="date" />
           <YAxis />
           <Tooltip />
           <Legend />
-          <Line type="monotone" dataKey="value" stroke="#82ca9d" dot={false} name="History" strokeDasharray="0" />
-          <Line type="monotone" dataKey="value" stroke="#ff7300" dot={false} name="Forecast" strokeDasharray="5 5" />
+          <Line type="monotone" dataKey="value" name="History" stroke="#16a34a" dot={false} strokeDasharray="0" />
+          <Line type="monotone" dataKey="value" name="Forecast" stroke="#f59e0b" dot={false} strokeDasharray="5 5" />
         </LineChart>
       </ResponsiveContainer>
     </div>
