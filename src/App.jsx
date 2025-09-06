@@ -38,42 +38,52 @@ export default function App(){
       if (!target) throw new Error("Select a target variable");
       if (!stateName) throw new Error("Select a State Name");
 
+      setStatus("Preparing… (checking data)");
+      const qsProbe = new URLSearchParams({ db, target_value: target, state: stateName, agg }).toString();
+      const info = await api(`/classical/probe?${qsProbe}`);
+      setStatus(`Found ${info.rows} rows from ${info.start_date} to ${info.end_date}. Est. ${info.est_months} months / ${info.est_quarters} quarters.`);
+
       setStatus("Starting background job…");
-      const start = await api(`/forecast/classical/run`, { method: "POST" });
+      const qsStart = new URLSearchParams({ db, target_value: target, state: stateName, agg, forecast_type: "F" }).toString();
+      const start = await api(`/classical/start?${qsStart}`, { method: "POST" });
       const id = start.job_id;
       setJobId(id);
 
+      // Poll
       const t = setInterval(async () => {
         try {
-          const s = await api(`/forecast/status/${id}`);
-          const pct = typeof s.progress === "number" ? s.progress : 0;
+          const s = await api(`/classical/status?job_id=${id}`);
+          const pct = s.total > 0 ? Math.min(100, Math.floor((s.done / s.total) * 100)) : 0;
           setPercent(pct);
-          setStatus(`${s.status}${s.error ? " – " + s.error : ""} (${pct}%)`);
-          if (s.status === "completed") {
+          setStatus(`${s.message} (${pct}%)`);
+          if (s.state === "ready") {
+            clearInterval(t);
             setReady(true);
-            clearInterval(t);
+            setStatus("Ready to download.");
           }
-          if (s.status === "error") {
+          if (s.state === "error") {
             clearInterval(t);
-            setErr(s.error || "Unknown error");
+            setErr(s.message || "Job failed");
           }
         } catch (e) {
-          // ignore transient polling errors
+          clearInterval(t);
+          setErr(String(e));
         }
       }, 1000);
     } catch (e) {
       setErr(String(e));
+      setStatus("");
     }
-};
+  };
 
   const downloadClassical = () => {
     if (!jobId) return;
-    window.location.href = `${API_BASE}/forecast/download/${jobId}`;
+    window.location.href = `${API_BASE}/classical/download?job_id=${jobId}`;
   };
 
   return (
     <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
-      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.6</span></h1>
+      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.7</span></h1>
 
       {(status || jobId) && (
         <div style={{ margin:"10px 0", padding:"8px 12px", background:"#111827", border:"1px solid #374151", borderRadius:10, fontSize:14 }}>
