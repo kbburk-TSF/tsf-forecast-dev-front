@@ -23,15 +23,14 @@ export default function App(){
   const saveApi = () => setApiBase(api.v)
 
   const testHealth = async () => {
-    setErr(''); setLoading(true); setHealth(null);
-    try { setHealth(JSON.stringify(await apiGet('/health'))) }
-    catch (e) { setErr(e.message) }
-    finally { setLoading(false) }
-  }
-
-  const testVersion = async () => {
-    setErr(''); setLoading(true); setVersion(null);
-    try { setVersion(JSON.stringify(await apiGet('/version'))) }
+    setErr(''); setLoading(true); setHealth(null); setVersion(null);
+    try { 
+      const h = await apiGet('/health')
+      setHealth(h)
+      // also grab version right after health succeeds
+      const v = await apiGet('/version')
+      setVersion(v)
+    }
     catch (e) { setErr(e.message) }
     finally { setLoading(false) }
   }
@@ -39,8 +38,8 @@ export default function App(){
   return (
     <div className="container">
       <div className="header">
-        <h1>TSF Frontend <span className="badge">v1.1</span></h1>
-        <div className="small">Baseline UI (no uploads)</div>
+        <h1>TSF Frontend <span className="badge">v1.2</span></h1>
+        <div className="small">Shows backend version in Checks</div>
       </div>
 
       <div className="tabs">
@@ -68,13 +67,20 @@ export default function App(){
         <div className="card">
           <h2>Connectivity Checks</h2>
           <div className="row" style={{marginTop: 12}}>
-            <button className="button primary" onClick={testHealth} disabled={loading}>Check /health</button>
-            <button className="button ghost" onClick={testVersion} disabled={loading}>Check /version</button>
+            <button className="button primary" onClick={testHealth} disabled={loading}>Check /health + /version</button>
           </div>
           <div style={{marginTop: 16}}>
             <div className="small">API Base: <span className="code">{getApiBase() || '(not set)'}</span></div>
-            {!!health && <div style={{marginTop: 10}}>Health: <span className="status ok">{health}</span></div>}
-            {!!version && <div style={{marginTop: 10}}>Version: <span className="status">{version}</span></div>}
+            {!!health && (
+              <div style={{marginTop: 10}}>
+                <div>Health: <span className="status ok">{JSON.stringify(health)}</span></div>
+              </div>
+            )}
+            {!!version && (
+              <div style={{marginTop: 10}}>
+                <div>Backend Version: <span className="status">{version.version}</span></div>
+              </div>
+            )}
             {!!err && <div style={{marginTop: 10, color:'var(--err)'}}>Error: {err}</div>}
           </div>
         </div>
