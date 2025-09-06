@@ -1,17 +1,12 @@
-# TSF Frontend v1.1 (no uploads)
+# TSF Frontend v1.2
 
-Minimal React (Vite) site for Render Static Site.
+This is the frontend for the TSF demo app.
 
-## Deploy (GitHub Desktop only)
-1. Create repo `tsf-frontend` and copy these files in.
-2. Commit → Publish (Private).
-3. Render → New → Static Site → select repo.
-4. Build command: `npm install && npm run build`
-5. Publish directory: `dist`
-6. Deploy.
+## Features
+- Connectivity checks
+- Forecast chart (Colorado NO₂, 30-day horizon)
 
-## Use
-- Open the site → Settings → paste your backend URL → Save.
-- Go to Checks → click /health and /version.
-
-No upload code exists in this package.
+## Commands
+- `npm install`
+- `npm run dev`
+- `npm run build`
