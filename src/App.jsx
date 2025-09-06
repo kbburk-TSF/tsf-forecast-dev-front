@@ -4,6 +4,32 @@ import { API_BASE, api } from "./lib.api";
 const DBS = [{ value: "demo_air_quality", label: "Air Quality (Demo)" }];
 
 export default function App(){
+  const [db, setDb] = useState(DBS[0].value);
+  const [targets, setTargets] = useState([]);
+  const [target, setTarget] = useState("");
+  const [filters, setFilters] = useState({});
+  const [stateName, setStateName] = useState("");
+  const [county, setCounty] = useState("");
+  const [city, setCity] = useState("");
+  const [cbsa, setCbsa] = useState("");
+  const [agg, setAgg] = useState("mean");
+  const [err, setErr] = useState("");
+  const [status, setStatus] = useState("");
+  const [jobId, setJobId] = useState("");
+  const [percent, setPercent] = useState(0);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
+    api(`/data/${db}/targets`).then(j => setTargets(j.targets || [])).catch(e => setErr(String(e)));
+  }, [db]);
+
+  useEffect(() => {
+    if (!target) { setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setReady(false); setJobId(""); setPercent(0); return; }
+    api(`/data/${db}/filters?target=${encodeURIComponent(target)}`)
+      .then(j => setFilters(j.filters || {}))
+      .catch(e => setErr(String(e)));
+  }, [db, target]);
 
   const runClassical = async () => {
     setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
@@ -38,41 +64,29 @@ export default function App(){
     } catch (e) {
       setErr(String(e));
     }
-  };
+};
 
   const downloadClassical = () => {
     if (!jobId) return;
     window.location.href = `${API_BASE}/forecast/download/${jobId}`;
   };
 
-  const [db, setDb] = useState(DBS[0].value);
-  const [targets, setTargets] = useState([]);
-  const [target, setTarget] = useState("");
-  const [filters, setFilters] = useState({});
-  const [stateName, setStateName] = useState("");
-  const [county, setCounty] = useState("");
-  const [city, setCity] = useState("");
-  const [cbsa, setCbsa] = useState("");
-  const [agg, setAgg] = useState("mean");
-  const [err, setErr] = useState("");
-  const [status, setStatus] = useState("");
-  const [jobId, setJobId] = useState("");
-  const [percent, setPercent] = useState(0);
-  const [ready, setReady] = useState(false);
+  return (
+    <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
+      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.6</span></h1>
 
-  useEffect(() => {
-    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
-    api(`/data/${db}/targets`).then(j => setTargets(j.targets || [])).catch(e => setErr(String(e)));
-  }, [db]);
+      {(status || jobId) && (
+        <div style={{ margin:"10px 0", padding:"8px 12px", background:"#111827", border:"1px solid #374151", borderRadius:10, fontSize:14 }}>
+          <div>{status}</div>
+          {!!jobId && (
+            <div style={{ marginTop:8, width:"100%", background:"#1f2937", borderRadius:8, overflow:"hidden" }}>
+              <div style={{ width:`${percent}%`, height:10, background:"#3b82f6", transition:"width .3s" }}></div>
+            </div>
+          )}
+        </div>
+      )}
 
-  useEffect(() => {
-    if (!target) { setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setReady(false); setJobId(""); setPercent(0); return; }
-    api(`/data/${db}/filters?target=${encodeURIComponent(target)}`)
-      .then(j => setFilters(j.filters || {}))
-      .catch(e => setErr(String(e)));
-  }, [db, target]);
-
-        <div style={{ display:"grid", gap:12, gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))" }}>
+      <div style={{ display:"grid", gap:12, gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))" }}>
         <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
           <h3>1) Database</h3>
           <select value={db} onChange={e=>setDb(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
