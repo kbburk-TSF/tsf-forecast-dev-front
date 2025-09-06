@@ -32,44 +32,48 @@ export default function App(){
   }, [db, target]);
 
   const runClassical = async () => {
-
     setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
-    // Build query params required by backend spec
-    const params = new URLSearchParams({
-      db: db || "demo",
-      target_value: target || "",
-      state_name: stateName || "",
-      county_name: countyName || "",
-      city_name: cityName || "",
-      cbsa_name: cbsaName || "",
-      agg: agg || "mean",
-      ftype: type || "F"
-    });
-
     try {
-      // Optional: probe for quick stats (non-blocking)
-      try { await api(`/classical/probe?${params.toString()}`); } catch {}
+      if (!db) throw new Error("Select a database");
+      if (!target) throw new Error("Select a target variable");
+      if (!stateName) throw new Error("Select a State Name");
 
-      setStatus("Starting…");
-      const start = await api(`/classical/start?${params.toString()}`, { method: "POST" });
+      setStatus("Preparing… (checking data)");
+      const qsProbe = new URLSearchParams({ db, target_value: target, state: stateName, agg }).toString();
+      const info = await api(`/classical/probe?${qsProbe}`);
+      setStatus(`Found ${info.rows} rows from ${info.start_date} to ${info.end_date}. Est. ${info.est_months} months / ${info.est_quarters} quarters.`);
+
+      setStatus("Starting background job…");
+      const qsStart = new URLSearchParams({ db, target_value: target, state: stateName, agg, forecast_type: "F" }).toString();
+      const start = await api(`/classical/start?${qsStart}`, { method: "POST" });
       const id = start.job_id;
       setJobId(id);
-      setStatus("Queued…");
 
-      const timer = setInterval(async () => {
+      // Poll
+      const t = setInterval(async () => {
         try {
           const s = await api(`/classical/status?job_id=${id}`);
-          const pct = typeof s.percent === "number" ? s.percent : (s.done && s.total ? Math.round((s.done/s.total)*100) : 0);
+          const pct = s.total > 0 ? Math.min(100, Math.floor((s.done / s.total) * 100)) : 0;
           setPercent(pct);
-          setStatus(`${s.state}${s.message ? " — " + s.message : ""}`);
-          if (s.state === "ready") { setReady(true); clearInterval(timer); }
-          if (s.state === "error") { clearInterval(timer); setErr(s.message || "Error"); }
-        } catch(e){ /* ignore transient errors */ }
+          setStatus(`${s.message} (${pct}%)`);
+          if (s.state === "ready") {
+            clearInterval(t);
+            setReady(true);
+            setStatus("Ready to download.");
+          }
+          if (s.state === "error") {
+            clearInterval(t);
+            setErr(s.message || "Job failed");
+          }
+        } catch (e) {
+          clearInterval(t);
+          setErr(String(e));
+        }
       }, 1000);
     } catch (e) {
       setErr(String(e));
+      setStatus("");
     }
-    
   };
 
   const downloadClassical = () => {
@@ -79,7 +83,7 @@ export default function App(){
 
   return (
     <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
-      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.6</span></h1>
+      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.7.4</span></h1>
 
       {(status || jobId) && (
         <div style={{ margin:"10px 0", padding:"8px 12px", background:"#111827", border:"1px solid #374151", borderRadius:10, fontSize:14 }}>
