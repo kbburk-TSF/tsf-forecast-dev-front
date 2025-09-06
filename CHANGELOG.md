@@ -1,5 +1,5 @@
-## v1.5.0 — 2025-09-06
-- Replace native "Run Forecast" with Classical flow.
-- Remove chart and native forecast calls entirely.
-- Run Forecast now performs a quick preflight via `/classical/probe` and then reveals **Download Classical CSV**.
-- Keep Database/Target/Filters/Aggregation UI unchanged.
+## v1.6.0 — 2025-09-06
+- Run Forecast now starts a **background job** via `/classical/start`.
+- Live progress polling via `/classical/status` with a progress bar.
+- Shows **Download Classical CSV** when the job is ready (downloads from `/classical/download?job_id=…`).
+- Keeps preflight `/classical/probe` message.

@@ -15,35 +15,61 @@ export default function App(){
   const [agg, setAgg] = useState("mean");
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
+  const [jobId, setJobId] = useState("");
+  const [percent, setPercent] = useState(0);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setErr(""); setStatus(""); setReady(false);
+    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
     api(`/data/${db}/targets`).then(j => setTargets(j.targets || [])).catch(e => setErr(String(e)));
   }, [db]);
 
   useEffect(() => {
-    if (!target) { setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setReady(false); return; }
+    if (!target) { setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa(""); setReady(false); setJobId(""); setPercent(0); return; }
     api(`/data/${db}/filters?target=${encodeURIComponent(target)}`)
       .then(j => setFilters(j.filters || {}))
       .catch(e => setErr(String(e)));
   }, [db, target]);
 
   const runClassical = async () => {
-    setErr(""); setStatus(""); setReady(false);
+    setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
     try {
       if (!db) throw new Error("Select a database");
       if (!target) throw new Error("Select a target variable");
       if (!stateName) throw new Error("Select a State Name");
 
-      // Preflight
       setStatus("Preparing… (checking data)");
       const qsProbe = new URLSearchParams({ db, target_value: target, state: stateName, agg }).toString();
       const info = await api(`/classical/probe?${qsProbe}`);
-      setStatus(`Ready: ${info.rows} rows from ${info.start_date} to ${info.end_date} · Est. ${info.est_months} months / ${info.est_quarters} quarters.`);
+      setStatus(`Found ${info.rows} rows from ${info.start_date} to ${info.end_date}. Est. ${info.est_months} months / ${info.est_quarters} quarters.`);
 
-      // Show download button
-      setReady(true);
+      setStatus("Starting background job…");
+      const qsStart = new URLSearchParams({ db, target_value: target, state: stateName, agg, forecast_type: "F" }).toString();
+      const start = await api(`/classical/start?${qsStart}`, { method: "POST" });
+      const id = start.job_id;
+      setJobId(id);
+
+      // Poll
+      const t = setInterval(async () => {
+        try {
+          const s = await api(`/classical/status?job_id=${id}`);
+          const pct = s.total > 0 ? Math.min(100, Math.floor((s.done / s.total) * 100)) : 0;
+          setPercent(pct);
+          setStatus(`${s.message} (${pct}%)`);
+          if (s.state === "ready") {
+            clearInterval(t);
+            setReady(true);
+            setStatus("Ready to download.");
+          }
+          if (s.state === "error") {
+            clearInterval(t);
+            setErr(s.message || "Job failed");
+          }
+        } catch (e) {
+          clearInterval(t);
+          setErr(String(e));
+        }
+      }, 1000);
     } catch (e) {
       setErr(String(e));
       setStatus("");
@@ -51,18 +77,22 @@ export default function App(){
   };
 
   const downloadClassical = () => {
-    const qs = new URLSearchParams({ db, target_value: target, state: stateName, agg, forecast_type: "F" }).toString();
-    window.location.href = `${API_BASE}/classical/export_classical?${qs}`;
-    // keep status visible; user sees file download
+    if (!jobId) return;
+    window.location.href = `${API_BASE}/classical/download?job_id=${jobId}`;
   };
 
   return (
     <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
-      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.5</span></h1>
+      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#22c55e", color:"#001", borderRadius:999, marginLeft:8 }}>v1.6</span></h1>
 
-      {status && (
+      {(status || jobId) && (
         <div style={{ margin:"10px 0", padding:"8px 12px", background:"#111827", border:"1px solid #374151", borderRadius:10, fontSize:14 }}>
-          {status}
+          <div>{status}</div>
+          {!!jobId && (
+            <div style={{ marginTop:8, width:"100%", background:"#1f2937", borderRadius:8, overflow:"hidden" }}>
+              <div style={{ width:`${percent}%`, height:10, background:"#3b82f6", transition:"width .3s" }}></div>
+            </div>
+          )}
         </div>
       )}
 
@@ -92,25 +122,16 @@ export default function App(){
           </select>
 
           <label style={{ display:"block", marginTop:10 }}>County Name</label>
-          <input list="countyOptions" value={county} onChange={e=>setCounty(e.target.value)} placeholder="(optional)"
-                 style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
-          <datalist id="countyOptions">
-            {(filters["County Name"] || []).map(v => <option key={v} value={v} />)}
-          </datalist>
+          <input list="countyOptions" value={county} onChange={e=>setCounty(e.target.value)} placeholder="(optional)" style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
+          <datalist id="countyOptions">{(filters["County Name"] || []).map(v => <option key={v} value={v} />)}</datalist>
 
           <label style={{ display:"block", marginTop:10 }}>City Name</label>
-          <input list="cityOptions" value={city} onChange={e=>setCity(e.target.value)} placeholder="(optional)"
-                 style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
-          <datalist id="cityOptions">
-            {(filters["City Name"] || []).map(v => <option key={v} value={v} />)}
-          </datalist>
+          <input list="cityOptions" value={city} onChange={e=>setCity(e.target.value)} placeholder="(optional)" style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
+          <datalist id="cityOptions">{(filters["City Name"] || []).map(v => <option key={v} value={v} />)}</datalist>
 
           <label style={{ display:"block", marginTop:10 }}>CBSA Name</label>
-          <input list="cbsaOptions" value={cbsa} onChange={e=>setCbsa(e.target.value)} placeholder="(optional)"
-                 style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
-          <datalist id="cbsaOptions">
-            {(filters["CBSA Name"] || []).map(v => <option key={v} value={v} />)}
-          </datalist>
+          <input list="cbsaOptions" value={cbsa} onChange={e=>setCbsa(e.target.value)} placeholder="(optional)" style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
+          <datalist id="cbsaOptions">{(filters["CBSA Name"] || []).map(v => <option key={v} value={v} />)}</datalist>
         </div>
 
         <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
