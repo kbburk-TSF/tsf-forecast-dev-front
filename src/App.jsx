@@ -65,6 +65,38 @@ export default function App(){
     }
   }
 
+  async function loadFieldLists(){
+    setErr("");
+    setStatus("Loading lists…");
+    try{
+      const base = `/data/${encodeURIComponent(db)}/targets`;
+      const qState  = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.state }).toString();
+      const qCounty = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.county }).toString();
+      const qCity   = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.city }).toString();
+      const qCbsa   = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.cbsa }).toString();
+
+      const [sRes, ctyRes, cityRes, cbsaRes] = await Promise.all([
+        api(base + qState),
+        api(base + qCounty),
+        api(base + qCity),
+        api(base + qCbsa),
+      ]);
+
+      const toList = (r) => Array.isArray(r) ? r : (r?.targets ?? []);
+
+      setStates(toList(sRes));
+      setCounties(toList(ctyRes));
+      setCities(toList(cityRes));
+      setCbsas(toList(cbsaRes));
+
+      setStatus("Lists loaded");
+    }catch(e){
+      setErr(String(e?.message || e));
+      setStatus("");
+      setStates([]); setCounties([]); setCities([]); setCbsas([]);
+    }
+  }
+
   async function loadFilters(){
     setErr("");
     setStatus("Loading filters…");
@@ -85,8 +117,8 @@ export default function App(){
     }
   }
 
-  useEffect(() => { loadTargets(); }, [db]);
-  useEffect(() => { if (target) { loadFilters(); } else { setStates([]); setCounties([]); setCities([]); setCbsas([]); } }, [target]);
+  useEffect(() => { loadTargets(); loadFieldLists(); }, [db]);
+  useEffect(() => { /* lists are loaded from DB directly; no filter fetch on target change */ }, [target]);
 
   async function runClassical(){
     setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
