@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { API_BASE, api } from "./lib.api";
 
-const DBS = [{ value: "demo_air_quality", label: "Air Quality (Demo)" }];
+const DBS = [{ value: "air_quality_demo_data", label: "Air Quality (Demo)" }];
 
 export default function App(){
   const [db, setDb] = useState(DBS[0].value);
