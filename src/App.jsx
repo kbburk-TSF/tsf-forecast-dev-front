@@ -78,10 +78,12 @@ export default function App(){
       });
       const f = await api(url);
             const lists = (f && (f.filters || f)) || {};
+            const lists = (f && (f.filters || f)) || {};
       setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
       setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
       setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
       setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
+
 
       setStatus("Filters loaded");
     }catch(e){
