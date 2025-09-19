@@ -1,5 +1,5 @@
-// DIAGNOSTIC api helper (plain JS) for Vite/ESBuild
-const API_BASE =
+// lib.api.js — Vite-safe, plain JS, exports API_BASE + api/get/post
+export const API_BASE =
   (typeof import.meta !== "undefined" &&
     import.meta &&
     import.meta.env &&
@@ -11,7 +11,7 @@ const API_BASE =
   "";
 
 // sanitize trailing slash
-const BASE = API_BASE.replace(/\/$/, "");
+const BASE = (API_BASE || "").replace(/\/$/, "");
 
 export async function api(path, opts = {}) {
   const url = `${BASE}${path}`;
