@@ -9,6 +9,9 @@ const SOURCE_TABLE = "air_quality_raw";
 const COLS = {
   target: "Parameter Name",
   state:  "State Name",
+  county: "County Name",
+  city:   "City Name",
+  cbsa:   "CBSA Name",
 };
 
 const DBS = [{ value: DB, label: "Air Quality (Demo)" }];
@@ -26,11 +29,20 @@ export default function App(){
 
   // values
   const [target, setTarget]     = useState("");
-  const [stateName, setStateName] = useState("");const [agg, setAgg]           = useState("mean");
+  const [stateName, setStateName] = useState("");
+  const [county, setCounty]     = useState("");
+  const [city, setCity]         = useState("");
+  const [cbsa, setCbsa]         = useState("");
+  const [agg, setAgg]           = useState("mean");
 
   // lists
   const [targets, setTargets]   = useState([]);
-  const [states, setStates]     = useState([]);const [err, setErr] = useState("");
+  const [states, setStates]     = useState([]);
+  const [counties, setCounties] = useState([]);
+  const [cities, setCities]     = useState([]);
+  const [cbsas, setCbsas]       = useState([]);
+
+  const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
   const [ready, setReady] = useState(false);
@@ -59,21 +71,54 @@ export default function App(){
     try{
       const base = `/data/${encodeURIComponent(db)}/targets`;
       const qState  = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.state }).toString();
-      const sRes = await api(base + qState);
+      const qCounty = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.county }).toString();
+      const qCity   = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.city }).toString();
+      const qCbsa   = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.cbsa }).toString();
+
+      const [sRes, ctyRes, cityRes, cbsaRes] = await Promise.all([
+        api(base + qState),
+        api(base + qCounty),
+        api(base + qCity),
+        api(base + qCbsa),
+      ]);
+
       const toList = (r) => Array.isArray(r) ? r : (r?.targets ?? []);
+
       setStates(toList(sRes));
+      setCounties(toList(ctyRes));
+      setCities(toList(cityRes));
+      setCbsas(toList(cbsaRes));
+
       setStatus("Lists loaded");
     }catch(e){
       setErr(String(e?.message || e));
       setStatus("");
-      setStates([]);
+      setStates([]); setCounties([]); setCities([]); setCbsas([]);
     }
   }
+
+  async function loadFilters(){
+    setErr("");
+    setStatus("Loading filters…");
+    try{
+      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target, target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa });
+      const f = await api(url);
+            const lists = (f && (f.filters || f)) || {};
+      setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
+      setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
+      setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
+      setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
+
+      setStatus("Filters loaded");
+    }catch(e){
+      setErr(String(e?.message || e));
+      setStatus("");
+      setStates([]); setCounties([]); setCities([]); setCbsas([]);
+    }
   }
 
-    }
-
-  useEffect(() => { /* no-op on target change */ }, [target]);
+  useEffect(() => { loadTargets(); loadFieldLists(); }, [db]);
+  useEffect(() => { /* lists are loaded from DB directly; no filter fetch on target change */ }, [target]);
 
   async function runClassical(){
     setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
@@ -81,7 +126,7 @@ export default function App(){
       const payload = {
         db, table: SOURCE_TABLE, target,
         target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
-        aggregation: agg, filters: { state: stateName }
+        aggregation: agg, filters: { state: stateName, county, city, cbsa }
       };
       const res = await api("/classical/start", {
         method: "POST",
@@ -125,7 +170,7 @@ export default function App(){
             <select value={db} onChange={e=>setDb(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
               {DBS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <button onClick={()=>{loadTargets();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
+            <button onClick={()=>{loadTargets(); if (target) loadFilters();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
           </div>
 
           {/* TARGET (always a dropdown) */}
@@ -133,6 +178,9 @@ export default function App(){
 
           {/* FILTERS — always dropdowns */}
           <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="Optional" />
+          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} placeholder="Optional" />
+          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} placeholder="Optional" />
+          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} placeholder="Optional" />
 
           <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
@@ -148,7 +196,7 @@ export default function App(){
 
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
-          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, aggregation: agg }, null, 2)}</pre>
+          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
           {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
           {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
