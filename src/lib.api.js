@@ -48,3 +48,4 @@ export async function get(path) {
 export async function post(path, data) {
   return api(path, { method: "POST", body: JSON.stringify(data || {}) });
 }
+
