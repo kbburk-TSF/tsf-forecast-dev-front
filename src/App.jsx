@@ -1,190 +1,188 @@
 import React, { useEffect, useState } from "react";
 import { API_BASE, api } from "./lib.api";
 
-// Fixed connection
-const DB = "air_quality_demo_data";
-const SCHEMA = "data";
-const SOURCE_TABLE = "air_quality_raw";
-
-// EXACT column names per your screenshot
-const COLS = {
-  target: "Parameter Name",
-  state:  "State Name",
-  county: "County Name",
-  city:   "City Name",
-  cbsa:   "CBSA Name",
-};
-
-const DBS = [{ value: DB, label: "Air Quality (Demo)" }];
-
-function qs(params){
-  const p = new URLSearchParams();
-  Object.entries(params).forEach(([k,v]) => {
-    if (v !== undefined && v !== null && String(v).length) p.set(k, String(v));
-  });
-  return "?" + p.toString();
-}
+// Keep the DB fixed to the working one you confirmed
+const DBS = [{ value: "air_quality_demo_data", label: "Air Quality (Demo)" }];
 
 export default function App(){
   const [db, setDb] = useState(DBS[0].value);
+  const [targets, setTargets] = useState([]);
+  const [target, setTarget] = useState("");
 
-  // values
-  const [target, setTarget]     = useState("");
+  // Filters payload as returned by the backend. Keys are EXACT column names.
+  // "State Name", "County Name", "City Name", "CBSA Name"
+  const [filters, setFilters] = useState({});
+
+  // Selected values
   const [stateName, setStateName] = useState("");
-  const [county, setCounty]     = useState("");
-  const [city, setCity]         = useState("");
-  const [cbsa, setCbsa]         = useState("");
-  const [agg, setAgg]           = useState("mean");
+  const [county, setCounty] = useState("");
+  const [city, setCity] = useState("");
+  const [cbsa, setCbsa] = useState("");
 
-  // lists
-  const [targets, setTargets]   = useState([]);
-  const [states, setStates]     = useState([]);
-  const [counties, setCounties] = useState([]);
-  const [cities, setCities]     = useState([]);
-  const [cbsas, setCbsas]       = useState([]);
-
+  const [agg, setAgg] = useState("mean");
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
+  const [percent, setPercent] = useState(0);
   const [ready, setReady] = useState(false);
 
-  async function loadTargets(){
-    setErr("");
-    setStatus("Loading targets…");
-    try{
-      const url = `/data/${encodeURIComponent(db)}/targets` + qs({
-        schema: SCHEMA, table: SOURCE_TABLE, target_col: COLS.target
-      });
-      const res = await api(url);
-      const list = Array.isArray(res) ? res : (res?.targets ?? []);
-      setTargets(list);
-      if (!list.includes(target)) setTarget("");
-      setStatus(list.length ? `Loaded ${list.length} targets` : "No targets");
-    }catch(e){
-      setErr(String(e?.message || e));
-      setStatus("");
-      setTargets([]);
-      setTarget("");
+  // Load targets when DB changes
+  useEffect(() => {
+    setTarget(""); setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa("");
+    setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
+    api(`/data/${encodeURIComponent(db)}/targets`)
+      .then(j => setTargets(j.targets || []))
+      .catch(e => setErr(String(e)));
+  }, [db]);
+
+  // Load filters when target (or db) changes
+  useEffect(() => {
+    if (!target) {
+      setFilters({}); setStateName(""); setCounty(""); setCity(""); setCbsa("");
+      setReady(false); setJobId(""); setPercent(0);
+      return;
     }
-  }
+    api(`/data/${encodeURIComponent(db)}/filters?target=${encodeURIComponent(target)}`)
+      .then(j => setFilters(j.filters || {}))
+      .catch(e => setErr(String(e)));
+  }, [db, target]);
 
-  async function loadFilters(){
-    setErr("");
-    setStatus("Loading filters…");
-    try{
-      const url = `/data/${encodeURIComponent(db)}/filters` + qs({
-        schema: SCHEMA, table: SOURCE_TABLE, target,
-        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa
-      });
-      const f = await api(url);
-      setStates(f?.state ?? f?.states ?? []);
-      setCounties(f?.county ?? f?.counties ?? []);
-      setCities(f?.city ?? f?.cities ?? []);
-      setCbsas(f?.cbsa ?? f?.cbsas ?? []);
-      setStatus("Filters loaded");
-    }catch(e){
-      setErr(String(e?.message || e));
-      setStatus("");
-      setStates([]); setCounties([]); setCities([]); setCbsas([]);
-    }
-  }
-
-  useEffect(() => { loadTargets(); }, [db]);
-  useEffect(() => { if (target) { loadFilters(); } else { setStates([]); setCounties([]); setCities([]); setCbsas([]); } }, [target]);
-
-  async function runClassical(){
-    setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
+  const runClassical = async () => {
+    setErr(""); setStatus(""); setReady(false); setJobId(""); setPercent(0);
     try {
-      const payload = {
-        db, schema: SCHEMA, table: SOURCE_TABLE, target,
-        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
-        aggregation: agg, filters: { state: stateName, county, city, cbsa }
-      };
-      const res = await api("/classical/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const jid = res?.job_id || res?.jobId || res?.id || "";
-      setJobId(jid); setStatus(jid ? "Running…" : "Submitted");
-      if (jid) {
-        const poll = async () => {
-          try { const s = await api(`/classical/status?job_id=${encodeURIComponent(jid)}`); if (s?.ready || s?.status === "done") { setStatus("Done"); setReady(true); return; } } catch {}
-          setTimeout(poll, 1500);
-        };
-        poll();
-      }
-    } catch (e) { setErr(String(e?.message || e)); setStatus(""); }
-  }
+      if (!db) throw new Error("Select a database");
+      if (!target) throw new Error("Select a target variable");
+      if (!stateName) throw new Error("Select a State Name");
 
-  const downloadClassical = () => { if (!jobId) return; window.location.href = `${API_BASE}/classical/download?job_id=${encodeURIComponent(jobId)}`; };
+      setStatus("Preparing… (checking data)");
+      const qsProbe = new URLSearchParams({ db, target_value: target, state: stateName, agg }).toString();
+      const info = await api(`/classical/probe?${qsProbe}`);
+      setStatus(`Found ${info.rows} rows from ${info.start_date} to ${info.end_date}. Est. ${info.est_months} months / ${info.est_quarters} quarters.`);
 
-  const Select = ({label, value, onChange, options, placeholder="(Any)"} ) => (
-    <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-      <label>{label}</label>
-      <select value={value} onChange={e=>onChange(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-        <option value="">{placeholder}</option>
-        {options.map(x => <option key={x} value={x}>{x}</option>)}
-      </select>
-    </div>
-  );
+      setStatus("Starting background job…");
+      const qsStart = new URLSearchParams({ db, target_value: target, state: stateName, agg, forecast_type: "F" }).toString();
+      const start = await api(`/classical/start?${qsStart}`, { method: "POST" });
+      const id = start.job_id;
+      setJobId(id);
+
+      // Poll
+      const t = setInterval(async () => {
+        try {
+          const s = await api(`/classical/status?job_id=${id}`);
+          const pct = s.total > 0 ? Math.min(100, Math.floor((s.done / s.total) * 100)) : 0;
+          setPercent(pct);
+          setStatus(`${s.message} (${pct}%)`);
+          if (s.state === "ready") {
+            clearInterval(t);
+            setReady(true);
+            setStatus("Ready to download.");
+          }
+          if (s.state === "error") {
+            clearInterval(t);
+            setErr(s.message || "Job failed");
+          }
+        } catch (e) {
+          clearInterval(t);
+          setErr(String(e));
+        }
+      }, 1000);
+    } catch (e) {
+      setErr(String(e));
+      setStatus("");
+    }
+  };
+
+  const downloadClassical = () => {
+    if (!jobId) return;
+    window.location.href = `${API_BASE}/classical/download?job_id=${jobId}`;
+  };
+
+  // Helper to read a list from the filters object by exact column name
+  const list = (key) => Array.isArray(filters?.[key]) ? filters[key] : [];
 
   return (
     <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
-      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontWeight:700, fontSize:12, padding:"2px 8px", background:"#93c5fd", color:"#001", borderRadius:999, marginLeft:8 }}>v2.1</span></h1>
+      <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontSize:14, padding:"2px 8px", background:"#93c5fd", color:"#001", borderRadius:999, marginLeft:8 }}>v2.1</span></h1>
 
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, alignItems:"start" }}>
-        <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
-          <div style={{ marginBottom:8, fontSize:12, opacity:.8 }}>Data</div>
+      {(status || jobId) && (
+        <div style={{ margin:"10px 0", padding:"8px 12px", background:"#111827", border:"1px solid #374151", borderRadius:10, fontSize:14 }}>
+          <div>{status}</div>
+          {!!jobId && (
+            <div style={{ marginTop:8, width:"100%", background:"#1f2937", borderRadius:8, overflow:"hidden" }}>
+              <div style={{ width:`${percent}%`, height:10, background:"#3b82f6", transition:"width .3s" }}></div>
+            </div>
+          )}
+        </div>
+      )}
 
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr auto", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>Database</label>
-            <select value={db} onChange={e=>setDb(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-              {DBS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <button onClick={()=>{loadTargets(); if (target) loadFilters();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
-          </div>
-
-          {/* TARGET (always a dropdown) */}
-          <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
-
-          {/* FILTERS — always dropdowns */}
-          <Select label="State"       value={stateName} onChange={setStateName} options={states} />
-          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} />
-          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} />
-          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} />
-
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>Aggregation</label>
-            <select value={agg} onChange={e=>setAgg(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-              <option value="mean">Mean (daily)</option>
-              <option value="sum">Sum (daily)</option>
-              <option value="median">Median (daily)</option>
-              <option value="max">Max (daily)</option>
-              <option value="min">Min (daily)</option>
-            </select>
-          </div>
+      <div style={{ display:"grid", gap:12, gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))" }}>
+        <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
+          <h3>1) Database</h3>
+          <select value={db} onChange={e=>setDb(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
+            {DBS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+          </select>
         </div>
 
-        <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
-          <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
-          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, schema: SCHEMA, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
-          {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
-          {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
+        <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
+          <h3>2) Target Variable</h3>
+          <select value={target} onChange={e=>setTarget(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
+            <option value="">Select target…</option>
+            {targets.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <div style={{ fontSize:12, opacity:.8, marginTop:6 }}>Maps to DB column “Parameter Name”.</div>
+        </div>
+
+        <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
+          <h3>3) Filters</h3>
+
+          {/* State: strict dropdown */}
+          <label>State Name</label>
+          <select value={stateName} onChange={e=>setStateName(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }}>
+            <option value="">Select state…</option>
+            {list("State Name").map(v => <option key={v} value={v}>{v}</option>)}
+          </select>
+
+          {/* County: input with datalist */}
+          <label style={{ display:"block", marginTop:10 }}>County Name</label>
+          <input list="countyOptions" value={county} onChange={e=>setCounty(e.target.value)} placeholder="(optional)" style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
+          <datalist id="countyOptions">{list("County Name").map(v => <option key={v} value={v} />)}</datalist>
+
+          {/* City: input with datalist */}
+          <label style={{ display:"block", marginTop:10 }}>City Name</label>
+          <input list="cityOptions" value={city} onChange={e=>setCity(e.target.value)} placeholder="(optional)" style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
+          <datalist id="cityOptions">{list("City Name").map(v => <option key={v} value={v} />)}</datalist>
+
+          {/* CBSA: input with datalist */}
+          <label style={{ display:"block", marginTop:10 }}>CBSA Name</label>
+          <input list="cbsaOptions" value={cbsa} onChange={e=>setCbsa(e.target.value)} placeholder="(optional)" style={{ width:"100%", padding:8, borderRadius:8, marginTop:4 }} />
+          <datalist id="cbsaOptions">{list("CBSA Name").map(v => <option key={v} value={v} />)}</datalist>
+        </div>
+
+        <div style={{ background:"#0f172a", padding:16, borderRadius:12 }}>
+          <h3>4) Aggregation</h3>
+          <select value={agg} onChange={e=>setAgg(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
+            <option value="mean">Mean (daily)</option>
+            <option value="sum">Sum (daily)</option>
+            <option value="median">Median (daily)</option>
+            <option value="max">Max (daily)</option>
+            <option value="min">Min (daily)</option>
+          </select>
         </div>
       </div>
 
       <div style={{ marginTop:16, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
-        <button onClick={runClassical} style={{ padding:"10px 14px", borderRadius:8, background:"#3b82f6", color:"#fff", border:"1px solid #1d4ed8" }}>
+        <button onClick={runClassical} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#3b82f6", color:"#fff", border:"1px solid #1d4ed8" }}>
           Run Forecast
         </button>
-        {ready && (
-          <button onClick={downloadClassical} style={{ padding:"10px 14px", borderRadius:8, background:"#f59e0b", color:"#001", border:"1px solid #b45309" }}>
+          {ready && (
+          <button onClick={downloadClassical} style={{ padding:"10px 14px", borderRadius:10, fontWeight:700, cursor:"pointer", background:"#f59e0b", color:"#001", border:"1px solid #b45309" }}>
             Download Classical CSV
           </button>
         )}
         <span style={{ fontSize:12, opacity:.8 }}>Backend: {API_BASE}</span>
       </div>
+
+      {err && <div style={{ marginTop:12, color:"#ef4444" }}>Error: {err}</div>}
     </div>
   );
 }
