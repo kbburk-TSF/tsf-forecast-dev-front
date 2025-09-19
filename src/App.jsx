@@ -11,14 +11,15 @@ const COLS = {
   state:  "State Name",
   county: "County Name",
   city:   "City Name",
-  cbsa:   "CBSA Name"};
+  cbsa:   "CBSA Name",
+};
 
 const DBS = [{ value: DB, label: "Air Quality (Demo)" }];
 
 function qs(params){
   const p = new URLSearchParams();
   Object.entries(params).forEach(([k,v]) => {
-    if (v !== undefined & v !== null & String(v).length) p.set(k, String(v));
+    if (v !== undefined && v !== null && String(v).length) p.set(k, String(v));
   });
   return "?" + p.toString();
 }
@@ -50,8 +51,7 @@ export default function App(){
     setErr("");
     setStatus("Loading targets…");
     try{
-      const url = `/data/${encodeURIComponent(db)}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target
-      });
+      const url = `/data/${encodeURIComponent(db)}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target });
       const res = await api(url);
       const list = Array.isArray(res) ? res : (res?.targets ?? []);
       setTargets(list);
@@ -69,14 +69,14 @@ export default function App(){
     setErr("");
     setStatus("Loading filters…");
     try{
-      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target,
-        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa
-      });
+      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target, target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa });
       const f = await api(url);
-      setStates(f?.state ?? f?.states ?? []);
-      setCounties(f?.county ?? f?.counties ?? []);
-      setCities(f?.city ?? f?.cities ?? []);
-      setCbsas(f?.cbsa ?? f?.cbsas ?? []);
+            const lists = (f && (f.filters || f)) || {};
+      setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
+      setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
+      setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
+      setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
+
       setStatus("Filters loaded");
     }catch(e){
       setErr(String(e?.message || e));
@@ -145,10 +145,10 @@ export default function App(){
           <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
 
           {/* FILTERS — always dropdowns */}
-          <Select label="State"       value={stateName} onChange={setStateName} options={states} />
-          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} />
-          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} />
-          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} />
+          <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="Optional" />
+          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} placeholder="Optional" />
+          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} placeholder="Optional" />
+          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} placeholder="Optional" />
 
           <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
@@ -165,8 +165,8 @@ export default function App(){
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
           <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
-          {status & <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
-          {err & <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
+          {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
+          {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
       </div>
 
@@ -174,7 +174,7 @@ export default function App(){
         <button onClick={runClassical} style={{ padding:"10px 14px", borderRadius:8, background:"#3b82f6", color:"#fff", border:"1px solid #1d4ed8" }}>
           Run Forecast
         </button>
-        {ready & (
+        {ready && (
           <button onClick={downloadClassical} style={{ padding:"10px 14px", borderRadius:8, background:"#f59e0b", color:"#001", border:"1px solid #b45309" }}>
             Download Classical CSV
           </button>
