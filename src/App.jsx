@@ -1,7 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { API_BASE, api } from "./lib.api";
 
-const DBS = [{ value: "air_quality_demo_data", label: "Air Quality (Demo)" }];
+// Explicit DB / schema / table required by backend
+const DB = "air_quality_demo_data";
+const SCHEMA = "data";
+const SOURCE_TABLE = "air_quality_raw";
+
+const DBS = [{ value: DB, label: "Air Quality (Demo)" }];
 
 export default function App(){
   const [db, setDb] = useState(DBS[0].value);
@@ -23,10 +28,17 @@ export default function App(){
   const [jobId, setJobId] = useState("");
   const [ready, setReady] = useState(false);
 
+  function qs(obj){
+    const p = new URLSearchParams();
+    Object.entries(obj).forEach(([k,v])=>{ if(v!==undefined && v!=="") p.set(k,String(v)); });
+    return "?" + p.toString();
+  }
+
   async function loadTargets() {
     setErr("");
     try {
-      const t = await api(`/data/${encodeURIComponent(db)}/targets`);
+      const url = `/data/${encodeURIComponent(db)}/targets` + qs({ schema: SCHEMA, table: SOURCE_TABLE });
+      const t = await api(url);
       const list = Array.isArray(t) ? t : (t?.targets ?? []);
       setTargets(list);
       if (!list.includes(target)) setTarget("");
@@ -38,8 +50,8 @@ export default function App(){
   async function loadFilters() {
     setErr("");
     try {
-      const qs = target ? `?target=${encodeURIComponent(target)}` : "";
-      const f = await api(`/data/${encodeURIComponent(db)}/filters${qs}`);
+      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ schema: SCHEMA, table: SOURCE_TABLE, target });
+      const f = await api(url);
       setStates(f?.state ?? f?.states ?? []);
       setCounties(f?.county ?? f?.counties ?? []);
       setCities(f?.city ?? f?.cities ?? []);
@@ -60,6 +72,8 @@ export default function App(){
     try {
       const payload = {
         db,
+        schema: SCHEMA,
+        table: SOURCE_TABLE,
         target,
         aggregation: agg,
         filters: { state: stateName, county, city, cbsa }
@@ -72,16 +86,11 @@ export default function App(){
       const jid = res?.job_id || res?.jobId || res?.id || "";
       setJobId(jid);
       setStatus(jid ? "Running…" : "Submitted");
-      // optional poll
       if (jid) {
         const poll = async () => {
           try {
             const s = await api(`/classical/status?job_id=${encodeURIComponent(jid)}`);
-            if (s?.ready || s?.status === "done") {
-              setStatus("Done");
-              setReady(true);
-              return;
-            }
+            if (s?.ready || s?.status === "done") { setStatus("Done"); setReady(true); return; }
           } catch {}
           setTimeout(poll, 1500);
         };
@@ -184,7 +193,7 @@ export default function App(){
 
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
-          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
+          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, schema: SCHEMA, table: SOURCE_TABLE, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
         </div>
       </div>
 
