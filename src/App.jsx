@@ -151,10 +151,10 @@ export default function App(){
           <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
 
           {/* FILTERS — always dropdowns */}
-          <Select label="State"       value={stateName} onChange={setStateName} options={states} />
-          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} />
-          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} />
-          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} />
+          <Select label="State"       value={stateName} onChange={setStateName} options={states}  placeholder="Optional" />
+          <Select label="County Name" value={county}    onChange={setCounty}    options={counties}  placeholder="Optional" />
+          <Select label="City Name"   value={city}      onChange={setCity}      options={cities}  placeholder="Optional" />
+          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas}  placeholder="Optional" />
 
           <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
