@@ -2,15 +2,15 @@ import React, { useEffect, useState } from "react";
 import { endpoints } from "../../api.js";
 
 const DBS = [
-  { value: "air_quality_demo_data", label: "Air Quality (Demo)" },
+  { value: "air_quality_demo", label: "Air Quality (Demo)" },
 ];
 
 const AGGREGATIONS = [
-  { value: "mean_daily", label: "Mean (daily)" },
-  { value: "sum_daily", label: "Sum (daily)" },
-  { value: "median_daily", label: "Median (daily)" },
-  { value: "max_daily", label: "Max (daily)" },
-  { value: "min_daily", label: "Min (daily)" },
+  { value: "mean", label: "Mean (daily)" },
+  { value: "sum", label: "Sum (daily)" },
+  { value: "median", label: "Median (daily)" },
+  { value: "max", label: "Max (daily)" },
+  { value: "min", label: "Min (daily)" },
 ];
 
 export default function DataTab(){
@@ -82,7 +82,7 @@ export default function DataTab(){
         <div className="row">
           <label style={{minWidth:140}}>Target</label>
           <select className="input" value={target} onChange={e=>setTarget(e.target.value)}>
-            {targets.map(x => <option key={x} value={x}>{x}</option>)}
+            {[(<option key="" value="">Select a target…</option>)].concat(targets.map(x => <option key={x} value={x}>{x}</option>))}
           </select>
         </div>
         <SelectOrInput label="State" list={states} value={state} onChange={setState} placeholder="Select state..." />
