@@ -19,7 +19,7 @@ const DBS = [{ value: DB, label: "Air Quality (Demo)" }];
 function qs(params){
   const p = new URLSearchParams();
   Object.entries(params).forEach(([k,v]) => {
-    if (v !== undefined & v !== null & String(v).length) p.set(k, String(v));
+    if (v !== undefined && v !== null && String(v).length) p.set(k, String(v));
   });
   return "?" + p.toString();
 }
@@ -42,7 +42,8 @@ export default function App(){
     setErr("");
     setStatus("Loading targets…");
     try{
-      const url = `/data/${encodeURIComponent(db)}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target });
+      const url = `/data/${encodeURIComponent(db)}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target
+      });
       const res = await api(url);
       const list = Array.isArray(res) ? res : (res?.targets ?? []);
       setTargets(list);
@@ -56,33 +57,24 @@ export default function App(){
     }
   }
 
-  async function loadFieldLists(){
-    setErr("");
-    try{
-      const base = `/data/${encodeURIComponent(db)}/targets`;
-      const qState = `?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.state }).toString();
-      const sRes = await api(base + qState);
-      const toList = (r) => Array.isArray(r) ? r : (r?.targets ?? []);
-      setStates(toList(sRes));
-    }catch(e){
-      setErr(String(e?.message || e));
-      setStates([]);
-    }
-  }
-  }
-
   async function loadFilters(){
     setErr("");
     setStatus("Loading filters…");
     try{
-      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target, target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa });
+      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target,
+        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa
+      });
       const f = await api(url);
-            const lists = (f & (f.filters || f)) || {};
-      setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);setStatus("Filters loaded");
+      setStates(f?.state ?? f?.states ?? []);
+      setCounties(f?.county ?? f?.counties ?? []);
+      setCities(f?.city ?? f?.cities ?? []);
+      setCbsas(f?.cbsa ?? f?.cbsas ?? []);
+      setStatus("Filters loaded");
     }catch(e){
       setErr(String(e?.message || e));
       setStatus("");
-      setStates([]);}
+      setStates([]); setCounties([]); setCities([]); setCbsas([]);
+    }
   }
 
   useEffect(() => {}, [target]);
@@ -143,7 +135,7 @@ async function runClassical(){
           <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
 
           {/* FILTERS — always dropdowns */}
-          <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="Optional" /><div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
+          <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="(Optional)"/><div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
             <select value={agg} onChange={e=>setAgg(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
               <option value="mean">Mean (daily)</option>
@@ -158,8 +150,8 @@ async function runClassical(){
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
           <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, aggregation: agg }, null, 2)}</pre>
-          {status & <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
-          {err & <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
+          {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
+          {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
       </div>
 
@@ -167,7 +159,7 @@ async function runClassical(){
         <button onClick={runClassical} style={{ padding:"10px 14px", borderRadius:8, background:"#3b82f6", color:"#fff", border:"1px solid #1d4ed8" }}>
           Run Forecast
         </button>
-        {ready & (
+        {ready && (
           <button onClick={downloadClassical} style={{ padding:"10px 14px", borderRadius:8, background:"#f59e0b", color:"#001", border:"1px solid #b45309" }}>
             Download Classical CSV
           </button>
