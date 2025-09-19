@@ -13,10 +13,10 @@ const TABS = [
 ];
 
 export default function App(){
-  const [tab, setTab] = useState("connect");
+  const [tab, setTab] = useState("data");
   return (
     <div className="container">
-      <h1 style={{margin:"0 0 12px"}}>TSF Frontend — CLEAN</h1>
+      <h1 style={{margin:"0 0 8px"}}>TSF Frontend — FULL DATA FORM <span className="badge">v2.1</span></h1>
       <div className="muted" style={{marginBottom:12}}>Backend: <span className="mono">{API_BASE}</span></div>
       <div className="tabs">
         {TABS.map(t => <div key={t.key} className={"tab " + (t.key===tab?"active":"")} onClick={()=>setTab(t.key)}>{t.label}</div>)}

@@ -3,13 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TSF Frontend — CLEAN</title>
+    <title>TSF Frontend — FULL DATA FORM v2.1</title>
     <style>
       :root { --bg:#ffffff; --fg:#0f172a; --muted:#6b7280; --card:#f8fafc; --border:#e5e7eb; --accent:#2563eb; }
       html, body, #root { height:100%; }
       body { margin:0; background:var(--bg); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
       .banner { background:linear-gradient(90deg,#2563eb,#06b6d4); color:#fff; padding:14px 16px; font-weight:700; }
-      .container { max-width: 1040px; margin: 24px auto; padding: 0 16px; }
+      .container { max-width: 1120px; margin: 24px auto; padding: 0 16px; }
       .tabs { display:flex; gap:8px; border-bottom:1px solid var(--border); margin-bottom:16px; }
       .tab { padding:10px 14px; border:1px solid var(--border); border-bottom:none; border-top-left-radius:10px; border-top-right-radius:10px; background:#fff; cursor:pointer; }
       .tab.active { background:var(--card); font-weight:600; }
@@ -22,11 +22,12 @@
       .muted { color: var(--muted); }
       pre { background:#0b1220; color:#e5e7eb; padding:12px; border-radius:8px; overflow:auto; }
       .split { display:grid; grid-template-columns: 1fr; gap:16px; }
-      @media (min-width: 900px){ .split{ grid-template-columns: 1fr 1fr; } }
+      @media (min-width: 1000px){ .split{ grid-template-columns: 1fr 1fr; } }
+      .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#ecfeff; color:#0369a1; border:1px solid #bae6fd; margin-left:8px; }
     </style>
   </head>
   <body>
-    <div class="banner">TSF FRONTEND — CLEAN BUILD</div>
+    <div class="banner">TSF FRONTEND — FULL DATA FORM v2.1 (built 2025-09-19 18:11:35)</div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
