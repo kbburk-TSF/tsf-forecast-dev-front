@@ -77,14 +77,10 @@ export default function App(){
         target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa
       });
       const f = await api(url);
-            const lists = (f && (f.filters || f)) || {};
-            const lists = (f && (f.filters || f)) || {};
-      setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
-      setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
-      setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
-      setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
-
-
+      setStates(f?.state ?? f?.states ?? []);
+      setCounties(f?.county ?? f?.counties ?? []);
+      setCities(f?.city ?? f?.cities ?? []);
+      setCbsas(f?.cbsa ?? f?.cbsas ?? []);
       setStatus("Filters loaded");
     }catch(e){
       setErr(String(e?.message || e));
