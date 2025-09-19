@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { API_BASE, api } from "./lib.api";
 
+// Fixed connection
 const DB = "air_quality_demo_data";
 const SCHEMA = "data";
 const SOURCE_TABLE = "air_quality_raw";
 
+// EXACT column names per your screenshot
 const COLS = {
   target: "Parameter Name",
   state:  "State Name",
@@ -25,18 +27,21 @@ function qs(params){
 
 export default function App(){
   const [db, setDb] = useState(DBS[0].value);
-  const [targets, setTargets] = useState([]);
-  const [target, setTarget] = useState("");
-  const [stateName, setStateName] = useState("");
-  const [county, setCounty] = useState("");
-  const [city, setCity] = useState("");
-  const [cbsa, setCbsa] = useState("");
-  const [agg, setAgg] = useState("mean");
 
-  const [states, setStates] = useState([]);
+  // values
+  const [target, setTarget]     = useState("");
+  const [stateName, setStateName] = useState("");
+  const [county, setCounty]     = useState("");
+  const [city, setCity]         = useState("");
+  const [cbsa, setCbsa]         = useState("");
+  const [agg, setAgg]           = useState("mean");
+
+  // lists
+  const [targets, setTargets]   = useState([]);
+  const [states, setStates]     = useState([]);
   const [counties, setCounties] = useState([]);
-  const [cities, setCities] = useState([]);
-  const [cbsas, setCbsas] = useState([]);
+  const [cities, setCities]     = useState([]);
+  const [cbsas, setCbsas]       = useState([]);
 
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
@@ -45,34 +50,47 @@ export default function App(){
 
   async function loadTargets(){
     setErr("");
+    setStatus("Loading targets…");
     try{
       const url = `/data/${encodeURIComponent(db)}/targets` + qs({
-        schema: SCHEMA, table: SOURCE_TABLE, target_col: COLS.target,
+        schema: SCHEMA, table: SOURCE_TABLE, target_col: COLS.target
       });
-      const t = await api(url);
-      const list = Array.isArray(t) ? t : (t?.targets ?? []);
+      const res = await api(url);
+      const list = Array.isArray(res) ? res : (res?.targets ?? []);
       setTargets(list);
       if (!list.includes(target)) setTarget("");
-    }catch(e){ setErr(String(e?.message || e)); }
+      setStatus(list.length ? `Loaded ${list.length} targets` : "No targets");
+    }catch(e){
+      setErr(String(e?.message || e));
+      setStatus("");
+      setTargets([]);
+      setTarget("");
+    }
   }
 
   async function loadFilters(){
     setErr("");
+    setStatus("Loading filters…");
     try{
       const url = `/data/${encodeURIComponent(db)}/filters` + qs({
         schema: SCHEMA, table: SOURCE_TABLE, target,
-        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
+        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa
       });
       const f = await api(url);
       setStates(f?.state ?? f?.states ?? []);
       setCounties(f?.county ?? f?.counties ?? []);
       setCities(f?.city ?? f?.cities ?? []);
       setCbsas(f?.cbsa ?? f?.cbsas ?? []);
-    }catch(e){ setErr(String(e?.message || e)); }
+      setStatus("Filters loaded");
+    }catch(e){
+      setErr(String(e?.message || e));
+      setStatus("");
+      setStates([]); setCounties([]); setCities([]); setCbsas([]);
+    }
   }
 
-  useEffect(() => { loadTargets(); loadFilters(); }, [db]);
-  useEffect(() => { loadFilters(); }, [target]);
+  useEffect(() => { loadTargets(); }, [db]);
+  useEffect(() => { if (target) { loadFilters(); } else { setStates([]); setCounties([]); setCities([]); setCbsas([]); } }, [target]);
 
   async function runClassical(){
     setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
@@ -82,7 +100,11 @@ export default function App(){
         target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
         aggregation: agg, filters: { state: stateName, county, city, cbsa }
       };
-      const res = await api("/classical/start", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const res = await api("/classical/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
       const jid = res?.job_id || res?.jobId || res?.id || "";
       setJobId(jid); setStatus(jid ? "Running…" : "Submitted");
       if (jid) {
@@ -97,6 +119,16 @@ export default function App(){
 
   const downloadClassical = () => { if (!jobId) return; window.location.href = `${API_BASE}/classical/download?job_id=${encodeURIComponent(jobId)}`; };
 
+  const Select = ({label, value, onChange, options, placeholder="(Any)"} ) => (
+    <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
+      <label>{label}</label>
+      <select value={value} onChange={e=>onChange(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
+        <option value="">{placeholder}</option>
+        {options.map(x => <option key={x} value={x}>{x}</option>)}
+      </select>
+    </div>
+  );
+
   return (
     <div style={{ padding: 20, fontFamily: "Inter, system-ui, sans-serif", color:"#e5e7eb", background:"#0b1220", minHeight:"100vh" }}>
       <h1 style={{ marginTop:0 }}>TSF Frontend <span style={{ fontWeight:700, fontSize:12, padding:"2px 8px", background:"#93c5fd", color:"#001", borderRadius:999, marginLeft:8 }}>v2.1</span></h1>
@@ -110,64 +142,17 @@ export default function App(){
             <select value={db} onChange={e=>setDb(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
               {DBS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <button onClick={()=>{loadTargets();loadFilters();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
+            <button onClick={()=>{loadTargets(); if (target) loadFilters();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
           </div>
 
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>Target</label>
-            <select value={target} onChange={e=>setTarget(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-              <option value="">Select a target…</option>
-              {targets.map(x => <option key={x} value={x}>{x}</option>)}
-            </select>
-          </div>
+          {/* TARGET (always a dropdown) */}
+          <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
 
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>State</label>
-            {states.length ? (
-              <select value={stateName} onChange={e=>setStateName(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-                <option value="">(Any)</option>
-                {states.map(x => <option key={x} value={x}>{x}</option>)}
-              </select>
-            ) : (
-              <input value={stateName} onChange={e=>setStateName(e.target.value)} placeholder="Optional" style={{ width:"100%", padding:8, borderRadius:8 }} />
-            )}
-          </div>
-
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>County Name</label>
-            {counties.length ? (
-              <select value={county} onChange={e=>setCounty(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-                <option value="">(Any)</option>
-                {counties.map(x => <option key={x} value={x}>{x}</option>)}
-              </select>
-            ) : (
-              <input value={county} onChange={e=>setCounty(e.target.value)} placeholder="Optional" style={{ width:"100%", padding:8, borderRadius:8 }} />
-            )}
-          </div>
-
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>City Name</label>
-            {cities.length ? (
-              <select value={city} onChange={e=>setCity(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-                <option value="">(Any)</option>
-                {cities.map(x => <option key={x} value={x}>{x}</option>)}
-              </select>
-            ) : (
-              <input value={city} onChange={e=>setCity(e.target.value)} placeholder="Optional" style={{ width:"100%", padding:8, borderRadius:8 }} />
-            )}
-          </div>
-
-          <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
-            <label>CBSA Name</label>
-            {cbsas.length ? (
-              <select value={cbsa} onChange={e=>setCbsa(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
-                <option value="">(Any)</option>
-                {cbsas.map(x => <option key={x} value={x}>{x}</option>)}
-              </select>
-            ) : (
-              <input value={cbsa} onChange={e=>setCbsa(e.target.value)} placeholder="Optional" style={{ width:"100%", padding:8, borderRadius:8 }} />
-            )}
-          </div>
+          {/* FILTERS — always dropdowns */}
+          <Select label="State"       value={stateName} onChange={setStateName} options={states} />
+          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} />
+          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} />
+          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} />
 
           <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
@@ -184,6 +169,8 @@ export default function App(){
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
           <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, schema: SCHEMA, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
+          {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
+          {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
       </div>
 
@@ -198,9 +185,6 @@ export default function App(){
         )}
         <span style={{ fontSize:12, opacity:.8 }}>Backend: {API_BASE}</span>
       </div>
-
-      {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
-      {err && <div style={{ marginTop:12, color:"#ef4444" }}>Error: {err}</div>}
     </div>
   );
 }
