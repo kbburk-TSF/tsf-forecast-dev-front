@@ -1,47 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { API_BASE, api } from "./lib.api";
 
-
-// Hardened fetch helpers: retry + dedupe + cache (session)
-const __cache = new Map(); // key -> array data
-const __inflight = new Map(); // key -> {promise, ts}
-
-async function fetchWithRetry(url, { attempts = 3, timeoutMs = 5000 } = {}) {
-  let lastErr;
-  for (let i = 0; i < attempts; i++) {
-    const jitter = Math.floor(timeoutMs * (0.8 + Math.random()*0.4));
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), jitter);
-    try{
-      const res = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(t);
-      if (!res.ok) throw new Error(res.status + " " + res.statusText);
-      return await res.json();
-    }catch(e){
-      lastErr = e;
-      clearTimeout(t);
-      if (i === attempts - 1) throw e;
-      await new Promise(r => setTimeout(r, 300 + Math.random()*400));
-    }
-  }
-  throw lastErr;
-}
-
-async function cachedJson(key, url) {
-  const inflight = __inflight.get(key);
-  if (inflight) return inflight.promise;
-  if (__cache.has(key)) {
-    const p = fetchWithRetry(url).then(json => { __cache.set(key, json); __inflight.delete(key); return json; })
-                                 .catch(()=>{ __inflight.delete(key); return __cache.get(key); });
-    __inflight.set(key, { promise: p, ts: Date.now() });
-    return __cache.get(key);
-  }
-  const p = fetchWithRetry(url).then(json => { __cache.set(key, json); __inflight.delete(key); return json; })
-                               .catch(err => { __inflight.delete(key); throw err; });
-  __inflight.set(key, { promise: p, ts: Date.now() });
-  return p;
-}
-
 // Fixed connection
 const DB = "air_quality_demo_data";
 const SOURCE_TABLE = "air_quality_raw";
@@ -70,32 +29,29 @@ export default function App(){
 
   // values
   const [target, setTarget]     = useState("");
-  const [stateName, setStateName] = useState("");const [agg, setAgg]           = useState("mean");
+  const [stateName, setStateName] = useState("");
+  const [county, setCounty]     = useState("");
+  const [city, setCity]         = useState("");
+  const [cbsa, setCbsa]         = useState("");
+  const [agg, setAgg]           = useState("mean");
 
   // lists
   const [targets, setTargets]   = useState([]);
-  const [states, setStates]     = useState([]);const [err, setErr] = useState("");
+  const [states, setStates]     = useState([]);
+  const [counties, setCounties] = useState([]);
+  const [cities, setCities]     = useState([]);
+  const [cbsas, setCbsas]       = useState([]);
+
+  const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
   const [ready, setReady] = useState(false);
 
   async function loadTargets(){
-  setErr("");
-  setStatus("Loading targets...");
-  try{
-    const url = `/data/${encodeURIComponent(db)}/targets?` + new URLSearchParams({ table: SOURCE_TABLE, target_col: COLS.target }).toString();
-    const key = `targets:${db}`;
-    const t = await cachedJson(key, url);
-    const list = Array.isArray(t) ? t : (t?.targets ?? []);
-    setTargets(list);
-    setStatus(`Loaded ${list.length} targets`);
-  }catch(e){
-    setErr(String(e?.message || e));
-    setStatus("");
-    setTargets([]);
-  }
-}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target
-      });
+    setErr("");
+    setStatus("Loading targets…");
+    try{
+      const url = `/data/${encodeURIComponent(db)}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target });
       const res = await api(url);
       const list = Array.isArray(res) ? res : (res?.targets ?? []);
       setTargets(list);
@@ -109,19 +65,28 @@ export default function App(){
     }
   }
 
-  /filters` + qs({ table: SOURCE_TABLE, target,
-        target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa
-      });
+  async function loadFilters(){
+    setErr("");
+    setStatus("Loading filters…");
+    try{
+      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target, target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa });
       const f = await api(url);
-      setStates(f?.state ?? f?.states ?? []);setStatus("Filters loaded");
+            const lists = (f && (f.filters || f)) || {};
+      setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
+      setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
+      setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
+      setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
+
+      setStatus("Filters loaded");
     }catch(e){
       setErr(String(e?.message || e));
       setStatus("");
-      setStates([]);}
+      setStates([]); setCounties([]); setCities([]); setCbsas([]);
+    }
   }
 
-  useEffect(() => { loadTargets(); loadStateList(); }, [db]);
-  useEffect(() => { /* no-op for lists on target change */ }, [target]);
+  useEffect(() => { loadTargets(); }, [db]);
+  useEffect(() => { if (target) { loadFilters(); } else { setStates([]); setCounties([]); setCities([]); setCbsas([]); } }, [target]);
 
   async function runClassical(){
     setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
@@ -129,7 +94,7 @@ export default function App(){
       const payload = {
         db, table: SOURCE_TABLE, target,
         target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
-        aggregation: agg, filters: { state: stateName }
+        aggregation: agg, filters: { state: stateName, county, city, cbsa }
       };
       const res = await api("/classical/start", {
         method: "POST",
@@ -180,7 +145,10 @@ export default function App(){
           <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
 
           {/* FILTERS — always dropdowns */}
-          <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="(Optional)"/>
+          <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="Optional" />
+          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} placeholder="Optional" />
+          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} placeholder="Optional" />
+          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} placeholder="Optional" />
 
           <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
@@ -196,7 +164,7 @@ export default function App(){
 
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
-          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, aggregation: agg }, null, 2)}</pre>
+          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
           {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
           {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
