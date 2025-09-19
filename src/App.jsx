@@ -92,7 +92,7 @@ export default function App(){
     setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
     try {
       const payload = {
-        db table: SOURCE_TABLE, target,
+        db, table: SOURCE_TABLE, target,
         target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
         aggregation: agg, filters: { state: stateName, county, city, cbsa }
       };
@@ -164,7 +164,7 @@ export default function App(){
 
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
-          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
+          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
           {status & <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
           {err & <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
