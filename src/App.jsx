@@ -73,7 +73,6 @@ export default function App(){
 
     }
 
-  useEffect(() => { loadTargets(); loadFieldLists(); }, [db]);
   useEffect(() => { /* no-op on target change */ }, [target]);
 
   async function runClassical(){
@@ -126,7 +125,7 @@ export default function App(){
             <select value={db} onChange={e=>setDb(e.target.value)} style={{ width:"100%", padding:8, borderRadius:8 }}>
               {DBS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
-            <button onClick={()=>{loadTargets(); loadFieldLists();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
+            <button onClick={()=>{loadTargets();}} className="btn" style={{ padding:"8px 12px" }}>Reload</button>
           </div>
 
           {/* TARGET (always a dropdown) */}
