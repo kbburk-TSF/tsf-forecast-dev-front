@@ -12,7 +12,7 @@ export default function App(){
   const [county, setCounty] = useState("");
   const [city, setCity] = useState("");
   const [cbsa, setCbsa] = useState("");
-  const [agg, setAgg] = useState("mean");
+  const [agg, setAgg] = useState("air_quality_demo_data");
   const [err, setErr] = useState("");
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
