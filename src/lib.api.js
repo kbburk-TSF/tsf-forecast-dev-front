@@ -1,7 +1,13 @@
-// DIAGNOSTIC api helper: reports full error details instead of generic 'Failed to fetch'.
+// DIAGNOSTIC api helper (plain JS) for Vite/ESBuild
 const API_BASE =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_ENGINE_API_URL) ||
-  (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_ENGINE_API_URL) ||
+  (typeof import.meta !== "undefined" &&
+    import.meta &&
+    import.meta.env &&
+    import.meta.env.VITE_ENGINE_API_URL) ||
+  (typeof process !== "undefined" &&
+    process &&
+    process.env &&
+    process.env.NEXT_PUBLIC_ENGINE_API_URL) ||
   "";
 
 // sanitize trailing slash
@@ -17,21 +23,17 @@ export async function api(path, opts = {}) {
       },
       ...opts,
     });
-    const contentType = res.headers.get("content-type") || "";
-    const body = contentType.includes("application/json")
+    const ct = res.headers.get("content-type") || "";
+    const body = ct.includes("application/json")
       ? await res.json().catch(() => ({}))
       : await res.text().catch(() => "");
 
     if (!res.ok) {
       const detail = typeof body === "string" ? body : JSON.stringify(body);
-      throw new Error(
-        `HTTP ${res.status} ${res.statusText} for ${url}\n` +
-        `Response: ${detail}`
-      );
+      throw new Error(`HTTP ${res.status} ${res.statusText} for ${url}\nResponse: ${detail}`);
     }
     return body;
   } catch (err) {
-    // Enrich network errors
     const e = err instanceof Error ? err : new Error(String(err));
     e.message = `[FETCH] ${url}\n${e.message}`;
     console.error(e);
