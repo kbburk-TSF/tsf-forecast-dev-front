@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { API_BASE, api } from "./lib.api";
 
 // Fixed connection
 const DB = "air_quality_demo_data";
+const SCHEMA = "data";
 const SOURCE_TABLE = "air_quality_raw";
 
 // EXACT column names per your screenshot
@@ -15,6 +16,18 @@ const COLS = {
 };
 
 const DBS = [{ value: DB, label: "Air Quality (Demo)" }];
+// --- Hardened fetch wrappers (retry + in-flight de-dupe + session cache) ---
+const __cache = { targets: new Map(), filters: new Map() };
+function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+async function apiRetry(call, attempts=[3000, 5000, 8000]){
+  let last;
+  for (let i=0;i<attempts.length;i++){
+    try{ return await call(); }
+    catch(e){ last = e; if (i===attempts.length-1) throw e; await sleep(Math.floor(attempts[i]*(0.2+Math.random()*0.4))); }
+  }
+  throw last;
+}
+
 
 function qs(params){
   const p = new URLSearchParams();
@@ -46,45 +59,68 @@ export default function App(){
   const [status, setStatus] = useState("");
   const [jobId, setJobId] = useState("");
   const [ready, setReady] = useState(false);
+  const targetsToken = useRef(0);
+  const filtersToken = useRef(0);
 
   async function loadTargets(){
     setErr("");
     setStatus("Loading targets…");
+    const key = `${db}`;
+    if (__cache.targets.has(key)) {
+      const list = __cache.targets.get(key);
+      setTargets(list);
+      if (!list.includes(target)) setTarget("");
+      setStatus(`Loaded ${list.length} targets (cached)`);
+    }
+    const seq = (targetsToken.current = (targetsToken.current||0) + 1);
     try{
       const url = `/data/${encodeURIComponent(db)}/targets` + qs({ table: SOURCE_TABLE, target_col: COLS.target });
-      const res = await api(url);
+      const res = await apiRetry(() => api(url));
+      if (targetsToken.current !== seq) return;
       const list = Array.isArray(res) ? res : (res?.targets ?? []);
+      __cache.targets.set(key, list);
       setTargets(list);
       if (!list.includes(target)) setTarget("");
       setStatus(list.length ? `Loaded ${list.length} targets` : "No targets");
     }catch(e){
+      if (targetsToken.current !== seq) return;
       setErr(String(e?.message || e));
       setStatus("");
-      setTargets([]);
-      setTarget("");
+      if (!__cache.targets.has(key)) { setTargets([]); setTarget(""); }
     }
   }
 
   async function loadFilters(){
     setErr("");
     setStatus("Loading filters…");
-    try{
-      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target, target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa });
-      const f = await api(url);
-            const lists = (f && (f.filters || f)) || {};
+    const key = `${db}::${target}`;
+    if (__cache.filters.has(key)) {
+      const lists = __cache.filters.get(key);
       setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
       setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
       setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
       setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
-
+      setStatus("Filters loaded (cached)");
+    }
+    const seq = (filtersToken.current = (filtersToken.current||0) + 1);
+    try{
+      const url = `/data/${encodeURIComponent(db)}/filters` + qs({ table: SOURCE_TABLE, target, target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa });
+      const f = await apiRetry(() => api(url));
+      if (filtersToken.current !== seq) return;
+      const lists = (f && (f.filters || f)) || {};
+      __cache.filters.set(key, lists);
+      setStates(Array.isArray(lists["State Name"]) ? lists["State Name"] : []);
+      setCounties(Array.isArray(lists["County Name"]) ? lists["County Name"] : []);
+      setCities(Array.isArray(lists["City Name"]) ? lists["City Name"] : []);
+      setCbsas(Array.isArray(lists["CBSA Name"]) ? lists["CBSA Name"] : []);
       setStatus("Filters loaded");
     }catch(e){
+      if (filtersToken.current !== seq) return;
       setErr(String(e?.message || e));
       setStatus("");
-      setStates([]); setCounties([]); setCities([]); setCbsas([]);
+      if (!__cache.filters.has(key)) { setStates([]); setCounties([]); setCities([]); setCbsas([]); }
     }
   }
-
   useEffect(() => { loadTargets(); }, [db]);
   useEffect(() => { if (target) { loadFilters(); } else { setStates([]); setCounties([]); setCities([]); setCbsas([]); } }, [target]);
 
@@ -92,7 +128,7 @@ export default function App(){
     setErr(""); setStatus("Starting…"); setReady(false); setJobId("");
     try {
       const payload = {
-        db, table: SOURCE_TABLE, target,
+        db, schema: SCHEMA, table: SOURCE_TABLE, target,
         target_col: COLS.target, state_col: COLS.state, county_col: COLS.county, city_col: COLS.city, cbsa_col: COLS.cbsa,
         aggregation: agg, filters: { state: stateName, county, city, cbsa }
       };
@@ -145,10 +181,10 @@ export default function App(){
           <Select label="Target" value={target} onChange={setTarget} options={targets} placeholder="Select a target…" />
 
           {/* FILTERS — always dropdowns */}
-          <Select label="State"       value={stateName} onChange={setStateName} options={states} placeholder="Optional" />
-          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} placeholder="Optional" />
-          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} placeholder="Optional" />
-          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} placeholder="Optional" />
+          <Select label="State"       value={stateName} onChange={setStateName} options={states} />
+          <Select label="County Name" value={county}    onChange={setCounty}    options={counties} />
+          <Select label="City Name"   value={city}      onChange={setCity}      options={cities} />
+          <Select label="CBSA Name"   value={cbsa}      onChange={setCbsa}      options={cbsas} />
 
           <div className="row" style={{ display:"grid", gridTemplateColumns:"160px 1fr", gap:10, alignItems:"center", marginBottom:8 }}>
             <label>Aggregation</label>
@@ -164,7 +200,7 @@ export default function App(){
 
         <div style={{ background:"#0f172a", border:"1px solid #374151", borderRadius:10, padding:12 }}>
           <div className="muted" style={{ marginBottom:8, opacity:.8 }}>Selected (v2.1)</div>
-          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
+          <pre style={{ background:"#111827", borderRadius:8, padding:12, color:"#e5e7eb" }}>{JSON.stringify({ db, schema: SCHEMA, table: SOURCE_TABLE, cols: COLS, target, state: stateName, county, city, cbsa, aggregation: agg }, null, 2)}</pre>
           {status && <div style={{ marginTop:8, color:"#93c5fd" }}>{status}</div>}
           {err && <div style={{ marginTop:8, color:"#ef4444" }}>{String(err)}</div>}
         </div>
