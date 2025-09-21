@@ -1,31 +1,60 @@
 import React, { useState, useRef } from "react";
 
 /**
- * Uses existing env/runtime vars ONLY.
- * - Vite: import.meta.env.VITE_API_BASE
- * - Next: import.meta.env.NEXT_PUBLIC_BACKEND_URL
- * - Runtime: window.API_BASE
- * - Else: same-origin ""
+ * BACKEND URL resolution (runtime-first to avoid false same-origin posts):
+ * 1) window.API_BASE (set at runtime without rebuild)
+ * 2) import.meta.env.VITE_API_BASE (Vite)
+ * 3) import.meta.env.NEXT_PUBLIC_BACKEND_URL (Vite/Next)
+ * 4) process.env.NEXT_PUBLIC_BACKEND_URL (Next at build-time)
+ * If none found, we refuse to upload to avoid hitting the front-end origin by mistake.
  */
-const API_BASE =
-  (import.meta?.env?.VITE_API_BASE ?? import.meta?.env?.NEXT_PUBLIC_BACKEND_URL) ||
-  (typeof window !== "undefined" && window.API_BASE) ||
-  "";
+const RUNTIME_URL = (typeof window !== "undefined" && window.API_BASE) || "";
+const BUILD_URL_VITE = (typeof import !== "undefined" && import.meta && import.meta.env && (import.meta.env.VITE_API_BASE || import.meta.env.NEXT_PUBLIC_BACKEND_URL)) || "";
+// process.env is inlined by Next at build; optional-chaining to avoid ReferenceError in browsers
+const BUILD_URL_NEXT = (typeof process !== "undefined" && process?.env?.NEXT_PUBLIC_BACKEND_URL) || "";
+const API_BASE = RUNTIME_URL || BUILD_URL_VITE || BUILD_URL_NEXT || "";
+
+/** Simple helper to guard against SPA index.html fallbacks returning 200 */
+function looksLikeBackendResponse(text) {
+  return typeof text === "string" && text.startsWith("state=");
+}
 
 export default function UploadTab() {
-  const [status, setStatus] = useState("idle");  // idle | uploading | waiting | done | error
+  const [status, setStatus] = useState("idle");
   const [progress, setProgress] = useState(0);
   const [message, setMessage] = useState("");
   const fileRef = useRef(null);
 
-  const onSubmit = (e) => {
+  const onSubmit = async (e) => {
     e.preventDefault();
+
+    if (!API_BASE) {
+      setStatus("error");
+      setMessage("Backend URL not set. Define window.API_BASE or NEXT_PUBLIC_BACKEND_URL / VITE_API_BASE.");
+      return;
+    }
+
+    // Optional ping to ensure we're talking to the backend host
+    try {
+      const ping = await fetch(`${API_BASE}/forms/debug/engine-db`, { method: "GET" });
+      if (!ping.ok) {
+        setStatus("error");
+        setMessage(`Backend health check failed: HTTP ${ping.status}`);
+        return;
+      }
+    } catch (err) {
+      setStatus("error");
+      setMessage(`Backend not reachable: ${String(err)}`);
+      return;
+    }
+
     const file = fileRef.current?.files?.[0];
     if (!file) {
       setStatus("error");
       setMessage("No file selected.");
       return;
     }
+
     setStatus("uploading");
     setProgress(0);
     setMessage("Starting upload...");
@@ -46,13 +75,15 @@ export default function UploadTab() {
 
     xhr.onreadystatechange = () => {
       if (xhr.readyState !== 4) return;
-      if (xhr.status >= 200 && xhr.status < 300) {
+      const okRange = xhr.status >= 200 && xhr.status < 300;
+      if (okRange && looksLikeBackendResponse(xhr.responseText)) {
         setStatus("done");
         setMessage(xhr.responseText || "Upload complete.");
         setProgress(100);
       } else {
         setStatus("error");
-        setMessage(`HTTP ${xhr.status}: ${xhr.responseText || "Upload failed."}`);
+        const snippet = (xhr.responseText || "").slice(0, 200);
+        setMessage(`Unexpected response (not from backend or error). HTTP ${xhr.status}. ${snippet ? "Body: " + snippet : ""}`);
       }
     };
 
@@ -68,6 +99,9 @@ export default function UploadTab() {
   return (
     <div className="p-4 space-y-3">
       <h2 className="text-lg font-semibold">Upload Historical CSV</h2>
+      <div className="text-xs opacity-70">
+        Using backend: <code>{API_BASE || "(unset)"} </code>
+      </div>
       <form onSubmit={onSubmit} className="space-y-2">
         <input ref={fileRef} type="file" accept=".csv" required />
         <button type="submit" disabled={status === "uploading" || status === "waiting"}>
