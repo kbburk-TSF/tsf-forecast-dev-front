@@ -32,22 +32,22 @@ export default function ClassicalTab(){
       </p>
       {error && <pre>{error}</pre>}
       <form method="post" action={action}>
-        <div className="row">
+        <fieldset className="row">
           <div style={{flex:1, minWidth:260}}>
-            <label>Parameter Name</label>
-            <select name="parameter" required className="input" value={param} onChange={e=>setParam(e.target.value)}>
+            <label htmlFor="param">Parameter Name</label>
+            <select id="param" name="parameter" required className="input" value={param} onChange={e=>setParam(e.target.value)}>
               {params.length===0 && <option value="">(loading…)</option>}
               {params.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div style={{flex:1, minWidth:260}}>
-            <label>State Name</label>
-            <select name="state" required className="input" value={state} onChange={e=>setState(e.target.value)}>
+            <label htmlFor="state">State Name</label>
+            <select id="state" name="state" required className="input" value={state} onChange={e=>setState(e.target.value)}>
               {states.length===0 && <option value="">(loading…)</option>}
               {states.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
-        </div>
+        </fieldset>
         <div className="row" style={{marginTop:12}}>
           <button className="btn" type="submit" disabled={!param || !state}>Download CSV</button>
         </div>
