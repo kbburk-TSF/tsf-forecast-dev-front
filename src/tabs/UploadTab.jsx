@@ -26,7 +26,6 @@ export default function UploadTab(){
   return (
     <div>
       <h2 style={{marginTop:0}}>Upload Historical CSV → engine.staging_historical</h2>
-      <p className="muted">Database: <strong>air_quality_engine_research</strong></p>
       <form onSubmit={startUpload}>
         <div className="row">
           <input type="file" ref={fileRef} accept=".csv" className="input" />
