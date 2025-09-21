@@ -3,33 +3,24 @@ import { API_BASE } from "../env.js";
 
 export default function UploadTab(){
   const fileRef = useRef(null);
+  const [job, setJob] = useState("");
   const [log, setLog] = useState("");
 
   async function startUpload(e){
     e.preventDefault();
     setLog("");
+    setJob("");
     const f = fileRef.current?.files?.[0];
     if(!f){ setLog("Select a CSV first."); return; }
-
-    try{
-      const form = new FormData();
-      form.append("file", f);
-
-      const resp = await fetch((API_BASE||"") + "/forms/upload-historical", {
-        method: "POST",
-        body: form
-      });
-
-      const text = await resp.text();
-      if (!resp.ok){
-        setLog(`HTTP ${resp.status}\n${text || "upload failed"}`);
-        return;
-      }
-      // Backend returns plain-text status lines (not JSON). Show it as-is.
-      setLog(text || "ok");
-    }catch(err){
-      setLog("Upload error: " + (err?.message || String(err)));
-    }
+    const form = new FormData();
+    form.append("file", f);
+    const r = await fetch((API_BASE||"") + "/forms/upload-historical", { method: "POST", body: form });
+    if(!r.ok){ setLog("HTTP " + r.status); return; }
+    const { job_id } = await r.json();
+    setJob(job_id);
+    const es = new EventSource((API_BASE||"") + "/forms/upload-historical/stream/" + job_id);
+    es.onmessage = (ev) => { setLog(ev.data); if (ev.data.includes("state=done") || ev.data.includes("state=error")) es.close(); };
+    es.onerror = () => { es.close(); };
   }
 
   return (
@@ -41,6 +32,7 @@ export default function UploadTab(){
           <button className="btn" type="submit">Upload</button>
         </div>
       </form>
+      {job && <div className="mono" style={{marginTop:8}}>job: {job}</div>}
       {log && <pre style={{marginTop:12}}>{log}</pre>}
     </div>
   );
