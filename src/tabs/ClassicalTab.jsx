@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from "react";
-import { endpoints } from "../../api.js"; // reuse existing API layer
-import { API_BASE } from "../../env.js";
+import { endpoints } from "../api.js";
+import { API_BASE } from "../env.js";
 
 /**
- * Mirrors backend /forms/classical:
- * - Select Parameter Name
- * - Select State Name
- * - POST to /forms/classical/run to trigger CSV download
+ * Clean Classical Export tab:
+ * - Loads Parameter and State options
+ * - POSTs to /forms/classical/run so browser downloads CSV
  */
 export default function ClassicalTab(){
+  const [db] = useState("air_quality_demo");
   const [params, setParams] = useState([]);
   const [param, setParam] = useState("");
   const [states, setStates] = useState([]);
@@ -16,45 +16,29 @@ export default function ClassicalTab(){
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Load parameters (targets) from existing API
   async function loadParams(){
     setError("");
     try{
-      // Reuse the same source as DataTab (air_quality_demo target list)
-      const r = await endpoints.targets("air_quality_demo");
+      const r = await endpoints.targets(db);
       const arr = Array.isArray(r?.targets) ? r.targets : (Array.isArray(r) ? r : []);
-      setParams(arr);
-      setParam(arr[0] || "");
-    }catch(e){
-      setError(String(e.message || e));
-      setParams([]); setParam("");
-    }
+      setParams(arr); setParam(arr[0] || "");
+    }catch(e){ setError(String(e.message||e)); setParams([]); setParam(""); }
   }
-
-  // Load states for the chosen parameter
   async function loadStates(){
     if(!param){ setStates([]); setState(""); return; }
     setError("");
     try{
-      const r = await endpoints.filters("air_quality_demo", param);
+      const r = await endpoints.filters(db, param);
       const f = r?.filters || r || {};
       const arr = Array.isArray(f.states) ? f.states : [];
-      setStates(arr);
-      setState(arr[0] || "");
-    }catch(e){
-      setError(String(e.message || e));
-      setStates([]); setState("");
-    }
+      setStates(arr); setState(arr[0] || "");
+    }catch(e){ setError(String(e.message||e)); setStates([]); setState(""); }
   }
 
   useEffect(()=>{ loadParams(); }, []);
   useEffect(()=>{ if(param) loadStates(); }, [param]);
 
-  // Submit by constructing a real <form> POST so the browser downloads CSV
-  function onSubmit(e){
-    // Let the form submit normally (causes file download)
-    setLoading(true);
-  }
+  function onSubmit(){ setLoading(true); }
 
   return (
     <div>

@@ -1,6 +1,6 @@
 {
-  "name": "tsf-frontend-fullform",
-  "version": "2.1.0",
+  "name": "tsf-frontend-clean",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
