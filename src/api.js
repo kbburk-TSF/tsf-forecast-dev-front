@@ -8,7 +8,6 @@ async function jget(path){
 
 export const endpoints = {
   health: () => jget("/health"),
-  // Adjust to your backend. For demo, matches earlier convention:
   targets: (db) => jget(`/api/targets?db=${encodeURIComponent(db)}`),
   filters: (db, target) => jget(`/api/filters?db=${encodeURIComponent(db)}&target=${encodeURIComponent(target)}`),
 };

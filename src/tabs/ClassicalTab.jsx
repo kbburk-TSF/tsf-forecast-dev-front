@@ -2,11 +2,6 @@ import React, { useEffect, useState } from "react";
 import { endpoints } from "../api.js";
 import { API_BASE } from "../env.js";
 
-/**
- * Clean Classical Export tab:
- * - Loads Parameter and State options
- * - POSTs to /forms/classical/run so browser downloads CSV
- */
 export default function ClassicalTab(){
   const [db] = useState("air_quality_demo");
   const [params, setParams] = useState([]);
