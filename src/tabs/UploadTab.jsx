@@ -1,53 +1,65 @@
-import React, { useRef, useState } from "react";
-import { API_BASE } from "../env.js";
+import React, { useState } from "react";
 
-export default function UploadTab(){
-  const fileRef = useRef(null);
-  const [job, setJob] = useState("");
+export default function UploadTab({ apiBase, targetFQN = "engine.staging_historical" }) {
+  const [file, setFile] = useState(null);
   const [log, setLog] = useState("");
-  const [status, setStatus] = useState("idle"); // idle | uploading | done | error
+  const [status, setStatus] = useState("idle");
 
-  async function startUpload(e){
-    e.preventDefault();
+  const onFileChange = (e) => {
+    const f = e.target.files?.[0] || null;
+    setFile(f);
     setLog("");
-    setJob("");
+    setStatus("idle");
+  };
+
+  async function handleUpload() {
+    if (!file) {
+      setLog("Choose a CSV first.");
+      return;
+    }
     setStatus("uploading");
-    const f = fileRef.current?.files?.[0];
-    if(!f){ setLog("Select a CSV first."); setStatus("error"); return; }
-    const form = new FormData();
-    form.append("file", f);
+    setLog("");
+
     try {
-      const r = await fetch((API_BASE||"") + "/forms/upload-historical", { method: "POST", body: form });
-      if(!r.ok){ setLog("HTTP " + r.status); setStatus("error"); return; }
-      const { job_id } = await r.json();
-      setJob(job_id);
-      const es = new EventSource((API_BASE||"") + "/forms/upload-historical/stream/" + job_id);
-      es.onmessage = (ev) => {
-        setLog(ev.data);
-        if (ev.data.includes("state=done")) { setStatus("done"); es.close(); }
-        if (ev.data.includes("state=error")) { setStatus("error"); es.close(); }
-      };
-      es.onerror = () => { setStatus("error"); es.close(); };
-    } catch(err) {
-      setLog("Upload failed: " + String(err));
+      const fd = new FormData();
+      fd.append("file", file);
+      const url = `${apiBase}/forms/upload-historical`;
+
+      const resp = await fetch(url, { method: "POST", body: fd });
+      // Backend returns text like: state=ok inserted=... OR JSON on some routes.
+      const bodyText = await resp.text();
+      let display = bodyText;
+      // Best-effort pretty if JSON
+      const trimmed = bodyText.trim();
+      if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+        try {
+          display = JSON.stringify(JSON.parse(trimmed), null, 2);
+        } catch (_) {
+          // keep raw text
+        }
+      }
+      setLog((prev) => (prev ? prev + "\n" : "") + (resp.ok ? "Upload complete.\n" : "Upload failed.\n") + display);
+      setStatus(resp.ok ? "done" : "error");
+    } catch (err) {
+      setLog(`Upload failed: ${String(err)}`);
       setStatus("error");
     }
   }
 
   return (
-    <div>
-      <h2 style={{marginTop:0}}>Upload Historical CSV → engine.staging_historical</h2>
-      <form onSubmit={startUpload}>
-        <div className="row">
-          <input type="file" ref={fileRef} accept=".csv" className="input" />
-          <button className="btn" type="submit" disabled={status==="uploading"}>
-            {status==="uploading" ? "Uploading..." : "Upload"}
+    <div className="card">
+      <div className="card-header">Upload Historical CSV → {targetFQN}</div>
+      <div className="card-body space-y-3">
+        <div className="flex items-center gap-2">
+          <input type="file" accept=".csv" onChange={onFileChange} />
+          <button onClick={handleUpload} disabled={!file || status === "uploading"}>
+            {status === "uploading" ? "Uploading..." : "Upload"}
           </button>
         </div>
-      </form>
-      {job && <div className="mono" style={{marginTop:8}}>job: {job}</div>}
-      {log && <pre style={{marginTop:12}}>{log}</pre>}
-      <div style={{marginTop:8, fontStyle:"italic"}}>status: {status}</div>
+
+        <pre className="log">{log || "No logs yet."}</pre>
+        <div>status: {status}</div>
+      </div>
     </div>
   );
 }
