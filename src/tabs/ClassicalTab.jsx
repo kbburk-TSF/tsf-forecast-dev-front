@@ -1,37 +1,55 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { API_BASE } from "../env.js";
+import { loadClassicalOptions } from "../api.js";
 
-/**
- * Simple Classical Export tab:
- * - No prefetch (avoids 404s from unknown endpoints)
- * - User enters Parameter and State manually
- * - Form POSTs to /forms/classical/run (backend handles validation)
- */
 export default function ClassicalTab(){
+  const [params, setParams] = useState([]);
+  const [states, setStates] = useState([]);
   const [param, setParam] = useState("");
   const [state, setState] = useState("");
-  const disabled = !param || !state;
-  function onSubmit(){ /* let browser handle the download */ }
+  const [error, setError] = useState("");
+
+  useEffect(()=>{
+    (async () => {
+      try{
+        setError("");
+        const { params, states } = await loadClassicalOptions();
+        setParams(params); setStates(states);
+        setParam(params[0] || ""); setState(states[0] || "");
+      }catch(e){
+        setError(String(e.message||e));
+      }
+    })();
+  }, []);
+
   const action = (API_BASE || "") + "/forms/classical/run";
+
   return (
     <div>
       <h2 style={{marginTop:0}}>Export Raw CSV</h2>
       <p className="muted" style={{marginTop:-6, marginBottom:12}}>
         The file will contain: <strong>forecast_id, forecast_name, date, value</strong>.
       </p>
-      <form method="post" action={action} onSubmit={onSubmit}>
+      {error && <pre>{error}</pre>}
+      <form method="post" action={action}>
         <div className="row">
           <div style={{flex:1, minWidth:260}}>
             <label>Parameter Name</label>
-            <input className="input" name="parameter" value={param} onChange={e=>setParam(e.target.value)} required placeholder="e.g., SO2" />
+            <select name="parameter" required className="input" value={param} onChange={e=>setParam(e.target.value)}>
+              {params.length===0 && <option value="">(loading…)</option>}
+              {params.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
           </div>
           <div style={{flex:1, minWidth:260}}>
             <label>State Name</label>
-            <input className="input" name="state" value={state} onChange={e=>setState(e.target.value)} required placeholder="e.g., Texas" />
+            <select name="state" required className="input" value={state} onChange={e=>setState(e.target.value)}>
+              {states.length===0 && <option value="">(loading…)</option>}
+              {states.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
         </div>
         <div className="row" style={{marginTop:12}}>
-          <button className="btn" type="submit" disabled={disabled}>Download CSV</button>
+          <button className="btn" type="submit" disabled={!param || !state}>Download CSV</button>
         </div>
       </form>
     </div>
