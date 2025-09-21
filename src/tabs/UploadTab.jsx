@@ -1,65 +1,47 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
+import { API_BASE } from "../env.js";
 
-export default function UploadTab({ apiBase, targetFQN = "engine.staging_historical" }) {
-  const [file, setFile] = useState(null);
+export default function UploadTab(){
+  const fileRef = useRef(null);
   const [log, setLog] = useState("");
-  const [status, setStatus] = useState("idle");
 
-  const onFileChange = (e) => {
-    const f = e.target.files?.[0] || null;
-    setFile(f);
+  async function startUpload(e){
+    e.preventDefault();
     setLog("");
-    setStatus("idle");
-  };
+    const f = fileRef.current?.files?.[0];
+    if(!f){ setLog("Select a CSV first."); return; }
 
-  async function handleUpload() {
-    if (!file) {
-      setLog("Choose a CSV first.");
-      return;
-    }
-    setStatus("uploading");
-    setLog("");
+    try{
+      const form = new FormData();
+      form.append("file", f);
 
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const url = `${apiBase}/forms/upload-historical`;
+      const resp = await fetch((API_BASE||"") + "/forms/upload-historical", {
+        method: "POST",
+        body: form
+      });
 
-      const resp = await fetch(url, { method: "POST", body: fd });
-      // Backend returns text like: state=ok inserted=... OR JSON on some routes.
-      const bodyText = await resp.text();
-      let display = bodyText;
-      // Best-effort pretty if JSON
-      const trimmed = bodyText.trim();
-      if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
-        try {
-          display = JSON.stringify(JSON.parse(trimmed), null, 2);
-        } catch (_) {
-          // keep raw text
-        }
+      const text = await resp.text();
+      if (!resp.ok){
+        setLog(`HTTP ${resp.status}\n${text || "upload failed"}`);
+        return;
       }
-      setLog((prev) => (prev ? prev + "\n" : "") + (resp.ok ? "Upload complete.\n" : "Upload failed.\n") + display);
-      setStatus(resp.ok ? "done" : "error");
-    } catch (err) {
-      setLog(`Upload failed: ${String(err)}`);
-      setStatus("error");
+      // Backend returns plain-text status lines (not JSON). Show it as-is.
+      setLog(text || "ok");
+    }catch(err){
+      setLog("Upload error: " + (err?.message || String(err)));
     }
   }
 
   return (
-    <div className="card">
-      <div className="card-header">Upload Historical CSV → {targetFQN}</div>
-      <div className="card-body space-y-3">
-        <div className="flex items-center gap-2">
-          <input type="file" accept=".csv" onChange={onFileChange} />
-          <button onClick={handleUpload} disabled={!file || status === "uploading"}>
-            {status === "uploading" ? "Uploading..." : "Upload"}
-          </button>
+    <div>
+      <h2 style={{marginTop:0}}>Upload Historical CSV → engine.staging_historical</h2>
+      <form onSubmit={startUpload}>
+        <div className="row">
+          <input type="file" ref={fileRef} accept=".csv" className="input" />
+          <button className="btn" type="submit">Upload</button>
         </div>
-
-        <pre className="log">{log || "No logs yet."}</pre>
-        <div>status: {status}</div>
-      </div>
+      </form>
+      {log && <pre style={{marginTop:12}}>{log}</pre>}
     </div>
   );
 }
