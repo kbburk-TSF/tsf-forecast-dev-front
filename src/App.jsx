@@ -1,6 +1,5 @@
-
 import React, { useState } from "react";
-import UploadTab from "./UploadTab.jsx";
+import UploadTab from "./tabs/UploadTab.jsx";
 
 function TabButton({ active, onClick, children }) {
   return (
