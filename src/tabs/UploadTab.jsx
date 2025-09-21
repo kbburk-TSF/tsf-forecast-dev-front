@@ -16,42 +16,70 @@ export default function UploadTab(){
     const f = fileRef.current?.files?.[0];
     if(!f){ setStatus("Select a CSV first."); return; }
 
+    let r;
     try {
       // Begin upload
       setStatus("Uploading…");
       const form = new FormData();
       form.append("file", f);
 
-      const r = await fetch((API_BASE||"") + "/forms/upload-historical", { method: "POST", body: form });
-      if(!r.ok){ setStatus("Upload failed (HTTP " + r.status + ")"); return; }
-
-      // *** Minimal change: immediately confirm the upload itself succeeded ***
-      const { job_id } = await r.json();
-      setJob(job_id);
-      setStatus("Upload complete — processing…");
-
-      // Stream processing logs/status
-      const es = new EventSource((API_BASE||"") + "/forms/upload-historical/stream/" + job_id);
-      es.onmessage = (ev) => {
-        const msg = ev.data || "";
-        setLog(msg);
-
-        if (msg.includes("state=done")) {
-          setStatus("Processing done");
-          es.close();
-        } else if (msg.includes("state=error")) {
-          setStatus("Processing failed");
-          es.close();
-        }
-      };
-      es.onerror = () => {
-        // Keep whatever we had, but note the stream issue
-        setStatus((s) => s ? s + " (stream disconnected)" : "Stream disconnected");
-        es.close();
-      };
+      r = await fetch((API_BASE||"") + "/forms/upload-historical", { method: "POST", body: form });
     } catch (err){
-      setStatus("Upload failed");
+      setStatus("Upload failed (network)");
+      return;
     }
+
+    if(!r || !r.ok){
+      setStatus("Upload failed (HTTP " + (r ? r.status : "—") + ")");
+      return;
+    }
+
+    // POST succeeded — confirm upload regardless of response body format
+    setStatus("Upload complete — processing…");
+
+    // Try to extract a job id from JSON or text; tolerate plain text responses
+    let job_id = "";
+    const ctype = (r.headers.get("content-type") || "").toLowerCase();
+    try {
+      if (ctype.includes("application/json")) {
+        const data = await r.json();
+        job_id = data?.job_id || "";
+      } else {
+        const txt = await r.text();
+        const m = txt && txt.match(/[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}/);
+        job_id = m ? m[0] : "";
+      }
+    } catch {
+      // Keep the success status; we just might not have a job id
+    }
+
+    if(!job_id){
+      // No job id to stream — we still indicate success of the upload
+      setStatus("Upload complete");
+      return;
+    }
+
+    setJob(job_id);
+
+    // Stream processing logs/status
+    const es = new EventSource((API_BASE||"") + "/forms/upload-historical/stream/" + job_id);
+    es.onmessage = (ev) => {
+      const msg = ev.data || "";
+      setLog(msg);
+
+      if (msg.includes("state=done")) {
+        setStatus("Processing done");
+        es.close();
+      } else if (msg.includes("state=error")) {
+        setStatus("Processing failed");
+        es.close();
+      }
+    };
+    es.onerror = () => {
+      // Don't override a success status; just note the stream issue
+      setStatus((s) => s ? s + " (stream disconnected)" : "Stream disconnected");
+      es.close();
+    };
   }
 
   return (
