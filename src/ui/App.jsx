@@ -13,7 +13,7 @@ const TABS = [
 ];
 
 export default function App(){
-  const [tab, setTab] = useState("data");
+  const [tab, setTab] = useState("classical");
   return (
     <div className="container">
       <h1 style={{margin:"0 0 8px"}}>TSF Frontend — FULL DATA FORM <span className="badge">v2.1</span></h1>
