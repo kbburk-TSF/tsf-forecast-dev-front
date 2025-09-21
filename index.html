@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TSF — Frontend</title>
+    <title>TSF — Clean Frontend</title>
     <style>
       :root { --bg:#ffffff; --fg:#0f172a; --muted:#6b7280; --card:#f8fafc; --border:#e5e7eb; --accent:#111827; }
       html, body, #root { height:100%; }
@@ -24,8 +24,9 @@
   </head>
   <body>
     <div id="root"></div>
-    <!-- Hard-coded backend URL -->
-    <script>window.__API_BASE__="https://tsf-forecast-dev-backend.onrender.com";</script>
+    <script>
+      // Optional: set at runtime if needed, e.g. window.__API_BASE__ = "http://localhost:5000";
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
