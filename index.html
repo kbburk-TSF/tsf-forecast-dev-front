@@ -3,30 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TSF — Clean Frontend</title>
-    <style>
-      :root { --bg:#ffffff; --fg:#0f172a; --muted:#6b7280; --card:#f8fafc; --border:#e5e7eb; --accent:#111827; }
-      html, body, #root { height:100%; }
-      body { margin:0; background:var(--bg); color:var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
-      .container { max-width: 1120px; margin: 24px auto; padding: 0 16px; }
-      .tabs { display:flex; gap:8px; border-bottom:1px solid var(--border); margin-bottom:16px; }
-      .tab { padding:10px 14px; border:1px solid var(--border); border-bottom:none; border-top-left-radius:10px; border-top-right-radius:10px; background:#fff; cursor:pointer; }
-      .tab.active { background:var(--card); font-weight:600; }
-      .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
-      .row { display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap; }
-      .btn { background:var(--accent); color:#fff; border:none; padding:10px 14px; border-radius:8px; cursor:pointer; }
-      .input, select { padding:10px 12px; border:1px solid var(--border); border-radius:8px; min-width:220px; }
-      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      .muted { color: var(--muted); }
-      pre { background:#0b1220; color:#e5e7eb; padding:12px; border-radius:8px; overflow:auto; }
-      .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#ecfeff; color:#0369a1; border:1px solid #bae6fd; margin-left:8px; }
-    </style>
+    <title>TSF — Fixed Frontend</title>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // Optional: set at runtime if needed, e.g. window.__API_BASE__ = "http://localhost:5000";
-    </script>
+    <script>window.__API_BASE__="https://tsf-forecast-dev-backend.onrender.com";</script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
