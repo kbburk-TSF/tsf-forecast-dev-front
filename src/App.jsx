@@ -16,8 +16,10 @@ export default function App(){
   const [tab, setTab] = useState("classical");
   return (
     <div className="container">
-      <h1 style={{margin:"0 0 8px"}}>TSF — Frontend <span className="badge">v1.0</span></h1>
-      <div className="muted" style={{marginBottom:12}}>Backend: <span className="mono">{API_BASE || "(same origin)"}</span></div>
+      <h1 style={{margin:"0 0 8px"}}>TSF — Frontend <span className="badge">env</span></h1>
+      <div className="muted" style={{marginBottom:12}}>
+        Backend: <span className="mono">{API_BASE || "(same origin)"}</span>
+      </div>
       <div className="tabs">
         {TABS.map(t => <div key={t.key} className={"tab " + (t.key===tab?"active":"")} onClick={()=>setTab(t.key)}>{t.label}</div>)}
       </div>
