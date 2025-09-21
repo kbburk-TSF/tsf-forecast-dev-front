@@ -16,36 +16,42 @@ export default function UploadTab(){
     const f = fileRef.current?.files?.[0];
     if(!f){ setStatus("Select a CSV first."); return; }
 
-    // Begin upload
-    setStatus("Uploading…");
-    const form = new FormData();
-    form.append("file", f);
+    try {
+      // Begin upload
+      setStatus("Uploading…");
+      const form = new FormData();
+      form.append("file", f);
 
-    const r = await fetch((API_BASE||"") + "/forms/upload-historical", { method: "POST", body: form });
-    if(!r.ok){ setStatus("Upload failed (HTTP " + r.status + ")"); return; }
+      const r = await fetch((API_BASE||"") + "/forms/upload-historical", { method: "POST", body: form });
+      if(!r.ok){ setStatus("Upload failed (HTTP " + r.status + ")"); return; }
 
-    // Server accepted file and created a job
-    const { job_id } = await r.json();
-    setJob(job_id);
-    setStatus("Processing…");
+      // *** Minimal change: immediately confirm the upload itself succeeded ***
+      const { job_id } = await r.json();
+      setJob(job_id);
+      setStatus("Upload complete — processing…");
 
-    const es = new EventSource((API_BASE||"") + "/forms/upload-historical/stream/" + job_id);
-    es.onmessage = (ev) => {
-      const msg = ev.data || "";
-      setLog(msg);
+      // Stream processing logs/status
+      const es = new EventSource((API_BASE||"") + "/forms/upload-historical/stream/" + job_id);
+      es.onmessage = (ev) => {
+        const msg = ev.data || "";
+        setLog(msg);
 
-      if (msg.includes("state=done")) {
-        setStatus("Upload succeeded");
+        if (msg.includes("state=done")) {
+          setStatus("Processing done");
+          es.close();
+        } else if (msg.includes("state=error")) {
+          setStatus("Processing failed");
+          es.close();
+        }
+      };
+      es.onerror = () => {
+        // Keep whatever we had, but note the stream issue
+        setStatus((s) => s ? s + " (stream disconnected)" : "Stream disconnected");
         es.close();
-      } else if (msg.includes("state=error")) {
-        setStatus("Upload failed");
-        es.close();
-      }
-    };
-    es.onerror = () => {
-      setStatus("Connection lost");
-      es.close();
-    };
+      };
+    } catch (err){
+      setStatus("Upload failed");
+    }
   }
 
   return (
