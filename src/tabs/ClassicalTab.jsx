@@ -22,8 +22,8 @@ export default function ClassicalTab(){
     })();
   }, []);
 
-  // Point to the working backend export route. Extra fields are harmless.
-  const action = (API_BASE || "") + "/forms/export-forecasts/run";
+  // FIX: align with backend form handler (POST /forms/classical/run)
+  const action = (API_BASE || "") + "/forms/classical/run";
 
   return (
     <div>
