@@ -22,6 +22,7 @@ export default function ClassicalTab(){
     })();
   }, []);
 
+  // FIX: align with backend form handler (POST /forms/classical/run)
   const action = (API_BASE || "") + "/forms/classical/run";
 
   return (
