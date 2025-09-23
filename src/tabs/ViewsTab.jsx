@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { fetchViewsMeta, listForecastIds, queryView } from "./api.js";
+import { fetchViewsMeta, listForecastIds, queryView } from "../api.js";
 
-/* View shapes from your View Builder:
+/* View shapes:
    - Per-table: <model_key>_instance_forecast_[ms|msq|msqm]_vw_daily_best
    - Per-model: <model_key>_vw_daily_best
    - Global:    engine.tsf_vw_daily_best
