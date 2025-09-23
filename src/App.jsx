@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { API_BASE } from "./env.js";
-import ConnectTab from "./ConnectTab.jsx";
-import ClassicalTab from "./ClassicalTab.jsx";
-import UploadTab from "./UploadTab.jsx";
-import ViewsTab from "./ViewsTab.jsx";
+import ConnectTab from "./tabs/ConnectTab.jsx";
+import ClassicalTab from "./tabs/ClassicalTab.jsx";
+import UploadTab from "./tabs/UploadTab.jsx";
+import ViewsTab from "./tabs/ViewsTab.jsx";
 
 const TABS = [
   { key:"connect",  label:"Connect" },
