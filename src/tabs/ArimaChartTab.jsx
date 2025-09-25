@@ -1,6 +1,6 @@
 // src/tabs/ArimaChartTab.jsx
-// Derived from ChartsTab.jsx — same date math and SVG rendering.
-// Differences: no low/high lines, no forecast interval polygon; legend labels ARIMA.
+// EXACTLY based on ChartsTab.jsx behavior — no low/high and no interval polygon.
+// Legend forecast label: ARIMA
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -14,7 +14,7 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-const VIEW = "tsf_vw_daily_best_arima_a0";
+const VIEW = "engine.tsf_vw_daily_best_arima_a0";
 
 export default function ArimaChartTab(){
   const [ids, setIds] = useState([]);
@@ -90,7 +90,7 @@ export default function ArimaChartTab(){
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Forecast Chart — tsf_vw_daily_best_arima_a0</h2>
+      <h2 style={{marginTop:0}}>Forecast Chart — engine.tsf_vw_daily_best_arima_a0</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
