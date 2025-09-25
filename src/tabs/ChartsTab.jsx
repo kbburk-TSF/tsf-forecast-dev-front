@@ -1,5 +1,5 @@
 // src/tabs/ChartsTab.jsx
-// v11 — index-based x scale (no date math in plotting). Exact 7-day pre-roll; forecast begins at index 7.
+// v13 — index-based plotting + updated legend + light-gold forecast interval
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -125,9 +125,8 @@ function SpecChart({ rows }){
   const H = 560;
   const pad = { top: 32, right: 24, bottom: 120, left: 80 };
 
-  const N = rows.length;           // total days = 7 pre-roll + month days
+  const N = rows.length;           // 7 pre-roll + month days
   const startIdx = 7;              // forecast begins after 7 pre-roll days
-  const endIdx = N - 1;
 
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
   const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
@@ -149,7 +148,6 @@ function SpecChart({ rows }){
   const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
   const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
 
-  // y ticks
   function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
     const span = max - min;
@@ -176,10 +174,10 @@ function SpecChart({ rows }){
         </g>
       ))}
 
-      {/* exact 7-day pre-roll */}
+      {/* pre-roll (exact 7 days) */}
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
-      {/* polygon */}
+      {/* forecast interval polygon (light gold) */}
       {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
 
       {/* series */}
@@ -189,7 +187,7 @@ function SpecChart({ rows }){
       <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
       <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
 
-      {/* x ticks: show every date label rotated */}
+      {/* x ticks */}
       {rows.map((r,i)=>(
         <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
@@ -202,20 +200,24 @@ function SpecChart({ rows }){
   );
 }
 
+// Updated legend: no Low/High entries; boxed over white background
 function Legend({ x, y }){
   const items = [
-    { type:"line", color:"#000",     label:"Actual (historical)", width:1.8, dash:null },
-    { type:"line", color:"#000",     label:"Actual (forecast)",   width:1.8, dash:"3,4" },
-    { type:"line", color:"#1f77b4",  label:"Forecast (fv)",       width:2.4, dash:null },
-    { type:"line", color:"#2ca02c",  label:"Low (low)",           width:1.8, dash:null },
-    { type:"line", color:"#2ca02c",  label:"High (high)",         width:1.8, dash:null },
-    { type:"fill", color:"rgba(0,180,0,0.18)", label:"Interval (low–high, forecast only)" },
-    { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical mask (7d)" },
+    { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
+    { type:"line", color:"#000",     label:"Actuals (for comparison)", width:1.8, dash:"3,4" },
+    { type:"line", color:"#1f77b4",  label:"Forecast (fv)", width:2.4, dash:null },
+    { type:"fill", color:"rgba(255,215,0,0.22)", label:"Forecast Interval" },
+    { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical" },
   ];
+  const rowH = 18;
+  const padBox = 10;
+  const boxW = 280;
+  const boxH = padBox*2 + items.length*rowH;
   return (
     <g>
+      <rect x={x-12} y={y-16} width={boxW} height={boxH} fill="#fff" stroke="#ddd" />
       {items.map((it,i)=>(
-        <g key={i} transform={`translate(${x}, ${y + i*18})`}>
+        <g key={i} transform={`translate(${x}, ${y + i*rowH})`}>
           {it.type==="line"
             ? <line x1={0} y1={0} x2={24} y2={0} stroke={it.color} strokeWidth={it.width} strokeDasharray={it.dash||"0"} />
             : <rect x={0} y={-7} width={24} height={14} fill={it.color} />
