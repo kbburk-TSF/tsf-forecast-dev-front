@@ -141,6 +141,13 @@ export default function DashboardTab(){
 
 /** Compact chart that shows: historical (solid), actuals-for-comparison (dashed), and ONE forecast line from `field`. */
 function MiniModelChart({ title, rows, field }){
+  // Field fallback list: try multiple common column spellings
+  const fieldOrder = {
+    "arima_m": ["arima_m","arima_m_a0","arima","arima_a0","ARIMA_M","arimaM"],
+    "hwes_m":  ["hwes_m","hwes_m_a0","hwes","hwes_a0","HWES_M","hwesM","holt_winters_m"],
+    "ses_m":   ["ses_m","ses_m_a0","ses","ses_a0","SES_M","sesM"]
+  };
+  const fieldList = fieldOrder[field] || [field];
   if (!rows || !rows.length) return (
     <div style={{border:"1px solid #e5e7eb", borderRadius:10, padding:12}}>
       <div style={{fontWeight:600, marginBottom:8}}>{title}</div>
@@ -156,7 +163,7 @@ function MiniModelChart({ title, rows, field }){
   const startIdx = 7; // forecast begins after 7 pre-roll days
 
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => [r.value, r[field]]).filter(v => v!=null).map(Number);
+  const yVals = rows.flatMap(r => [r.value, ...fieldList.map(f=>r[f])]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
@@ -167,7 +174,14 @@ function MiniModelChart({ title, rows, field }){
 
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const modelPts      = rows.map((r,i) => (r[field]!=null && i >= startIdx) ? { i, y:Number(r[field]) } : null).filter(Boolean);
+  const getFieldVal = (r) => {
+    for (const f of fieldList){ if (r[f] != null) return Number(r[f]); }
+    return null;
+  };
+  const modelPts = rows.map((r,i) => {
+    const v = getFieldVal(r);
+    return (v!=null && i >= startIdx) ? { i, y:v } : null;
+  }).filter(Boolean);
 
   function niceTicks(min, max, count=5){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
@@ -275,7 +289,7 @@ function FullSpecChart({ rows }){
       ))}
 
       {/* pre-roll (exact 7 days) */}
-      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad-bottom} fill="rgba(0,0,0,0.08)"/>
+      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
       {/* fix small typo above */}
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)" style={{display:"none"}}/>
 
