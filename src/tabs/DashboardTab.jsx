@@ -1,5 +1,10 @@
-// src/tabs/ChartsTab.jsx
-// v13 — index-based plotting + updated legend + light-gold forecast interval
+// src/tabs/DashboardTab.jsx
+// 4 copies of SpecChart from ChartsTab.jsx
+// Top row shows historical + actuals + a single forecast series each:
+//   Chart 1 -> arima_m as fv (no interval)
+//   Chart 2 -> hwes_m  as fv (no interval)
+//   Chart 3 -> ses_m   as fv (no interval)
+// Bottom chart -> unchanged (uses fv/low/high from the view)
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -13,112 +18,6 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-export default function DashboardTab__WORKAROUND_DO_NOT_USE(){
-  const [ids, setIds] = useState([]);
-  const [forecastId, setForecastId] = useState("");
-  const [allMonths, setAllMonths] = useState([]);
-  const [startMonth, setStartMonth] = useState("");
-  const [monthsCount, setMonthsCount] = useState(1);
-  const [rows, setRows] = useState([]);
-  const [status, setStatus] = useState("");
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const list = await listForecastIds({ scope:"global", model:"", series:"" });
-        const norm = (Array.isArray(list) ? list : []).map(x => (
-          typeof x === "string" ? { id:x, name:x }
-          : { id:String(x.id ?? x.value ?? x), name:String(x.name ?? x.label ?? x.id ?? x) }
-        ));
-        setIds(norm);
-        if (norm.length) setForecastId(norm[0].id);
-      } catch(e){ setStatus("Could not load forecasts: " + String(e.message||e)); }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!forecastId) return;
-    (async () => {
-      try {
-        setStatus("Scanning dates…");
-        const res = await queryView({ scope:"global", model:"", series:"", forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
-        const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
-        const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
-        setAllMonths(months);
-        if (months.length) setStartMonth(months[0] + "-01");
-        setStatus("");
-      } catch(e){ setStatus("Failed to scan dates: " + String(e.message||e)); }
-    })();
-  }, [forecastId]);
-
-  const monthOptions = useMemo(() => allMonths.map(m => ({ value: m+"-01", label: m })), [allMonths]);
-
-  async function run(){
-    if (!forecastId || !startMonth) return;
-    try{
-      setStatus("Loading…");
-      const start = firstOfMonthUTC(parseYMD(startMonth));
-      const preRollStart = new Date(start.getTime() - 7*MS_DAY);
-      const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
-
-      const res = await queryView({
-        scope:"global", model:"", series:"",
-        forecast_id: forecastId,
-        date_from: ymd(preRollStart),
-        date_to: ymd(end),
-        page:1, page_size: 20000
-      });
-
-      const byDate = new Map();
-      for (const r of (res.rows||[])){
-        if (!r || !r.date) continue;
-        byDate.set(r.date, r);
-      }
-      const days = daysBetweenUTC(preRollStart, end);
-      const strict = days.map(d => {
-        const r = byDate.get(d) || {};
-        return { date: d, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
-      });
-      setRows(strict);
-      setStatus("");
-    } catch(e){ setStatus(String(e.message||e)); }
-  }
-
-  return (
-    <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Forecast Chart — engine.tsf_vw_full</h2>
-      <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
-        <div>
-          <label>Forecast (forecast_name)</label><br/>
-          <select className="input" value={forecastId} onChange={e=>setForecastId(e.target.value)}>
-            {ids.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>Start month</label><br/>
-          <select className="input" value={startMonth} onChange={e=>setStartMonth(e.target.value)}>
-            {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>Months to show</label><br/>
-          <select className="input" value={monthsCount} onChange={e=>setMonthsCount(Number(e.target.value))}>
-            <option value={1}>1</option>
-            <option value={2}>2</option>
-            <option value={3}>3</option>
-          </select>
-        </div>
-        <div>
-          <button className="btn" onClick={run}>Run</button>
-        </div>
-        <div className="muted" style={{marginLeft:12}}>{status}</div>
-      </div>
-      <SpecChart rows={rows} />
-    </div>
-  );
-}
-
-
 export default function DashboardTab(){
   const [ids, setIds] = useState([]);
   const [forecastId, setForecastId] = useState("");
@@ -128,7 +27,6 @@ export default function DashboardTab(){
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("");
 
-  // IDENTICAL: fetch ids
   useEffect(() => {
     (async () => {
       try {
@@ -143,7 +41,6 @@ export default function DashboardTab(){
     })();
   }, []);
 
-  // IDENTICAL: scan date range for month dropdown
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
@@ -161,7 +58,6 @@ export default function DashboardTab(){
 
   const monthOptions = useMemo(() => allMonths.map(m => ({ value: m+"-01", label: m })), [allMonths]);
 
-  // IDENTICAL: run query for selected window
   async function run(){
     if (!forecastId || !startMonth) return;
     try{
@@ -186,16 +82,16 @@ export default function DashboardTab(){
       const days = daysBetweenUTC(preRollStart, end);
       const strict = days.map(d => {
         const r = byDate.get(d) || {};
-        // retain base fields AND the three model columns if present
         return {
           date: d,
           value: r.value ?? null,
-          fv:    r.fv ?? null,
-          low:   r.low ?? null,
-          high:  r.high ?? null,
+          fv: r.fv ?? null,
+          low: r.low ?? null,
+          high: r.high ?? null,
+          // additional model-specific columns if present
           arima_m: r.arima_m ?? null,
-          hwes_m:  r.hwes_m ?? null,
-          ses_m:   r.ses_m ?? null
+          hwes_m:  r.hwes_m  ?? null,
+          ses_m:   r.ses_m   ?? null,
         };
       });
       setRows(strict);
@@ -203,20 +99,24 @@ export default function DashboardTab(){
     } catch(e){ setStatus(String(e.message||e)); }
   }
 
-  // Map rows for the top three charts:
-  const mapModel = (rows, field) => (rows||[]).map(r => ({
-    ...r,
-    fv: r[field] ?? null,  // drive the blue forecast line with the chosen model
-    low: null,
-    high: null
-  }));
-  const rowsArima = mapModel(rows, "arima_m");
-  const rowsHwes  = mapModel(rows, "hwes_m");
-  const rowsSes   = mapModel(rows, "ses_m");
+  // project rows to use a specific forecast column as `fv` and hide the interval
+  function projectRowsFor(modelKey){
+    return rows.map(r => ({
+      date: r.date,
+      value: r.value ?? null,
+      fv: (r && modelKey in r) ? (r[modelKey] ?? null) : null,
+      low: null,   // hide interval per instructions
+      high: null,  // hide interval per instructions
+    }));
+  }
+
+  const rowsArima = useMemo(() => projectRowsFor("arima_m"), [rows]);
+  const rowsHwes  = useMemo(() => projectRowsFor("hwes_m"),  [rows]);
+  const rowsSes   = useMemo(() => projectRowsFor("ses_m"),   [rows]);
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Dashboard — ARIMA / HWES / SES + Full</h2>
+      <h2 style={{marginTop:0}}>Dashboard — 4 Charts</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
@@ -244,18 +144,21 @@ export default function DashboardTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
+      {/* Top row: ARIMA_M, HWES_M, SES_M as fv; NO changes to chart type */}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rowsArima} /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rowsHwes} /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rowsSes} /></div>
+        <SpecChart rows={rowsArima} />
+        <SpecChart rows={rowsHwes} />
+        <SpecChart rows={rowsSes} />
       </div>
 
+      {/* Bottom chart: unchanged — uses fv/low/high from the view */}
       <div style={{marginTop:16}}>
         <SpecChart rows={rows} />
       </div>
     </div>
   );
 }
+
 function SpecChart({ rows }){
   if (!rows || !rows.length) return null;
 
