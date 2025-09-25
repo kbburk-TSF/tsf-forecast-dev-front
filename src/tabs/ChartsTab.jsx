@@ -180,7 +180,7 @@ function SpecChart({ rows }){
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
       {/* polygon */}
-      {polyStr && <polygon points={polyStr} fill="rgba(0,180,0,0.18)" stroke="none" />}
+      {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
 
       {/* series */}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
