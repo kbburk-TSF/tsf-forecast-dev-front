@@ -1,6 +1,5 @@
-// src/tabs/ArimaChartTab.jsx
-// EXACTLY based on ChartsTab.jsx behavior — no low/high and no interval polygon.
-// Legend forecast label: ARIMA
+// src/tabs/ChartsTab.jsx
+// v13 — index-based plotting + updated legend + light-gold forecast interval
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -14,9 +13,7 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-const VIEW = "engine.tsf_vw_daily_best_arima_a0";
-
-export default function ArimaChartTab(){
+export default function ChartsTab(){
   const [ids, setIds] = useState([]);
   const [forecastId, setForecastId] = useState("");
   const [allMonths, setAllMonths] = useState([]);
@@ -44,7 +41,7 @@ export default function ArimaChartTab(){
     (async () => {
       try {
         setStatus("Scanning dates…");
-        const res = await queryView({ scope:"global", model:"", series:"", view: VIEW, forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
+        const res = await queryView({ scope:"global", model:"", series:"", forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
         const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
         const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
         setAllMonths(months);
@@ -66,7 +63,6 @@ export default function ArimaChartTab(){
 
       const res = await queryView({
         scope:"global", model:"", series:"",
-        view: VIEW,
         forecast_id: forecastId,
         date_from: ymd(preRollStart),
         date_to: ymd(end),
@@ -81,7 +77,7 @@ export default function ArimaChartTab(){
       const days = daysBetweenUTC(preRollStart, end);
       const strict = days.map(d => {
         const r = byDate.get(d) || {};
-        return { date: d, value: r.value ?? null, fv: r.fv ?? null }; // no low/high
+        return { date: d, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
       });
       setRows(strict);
       setStatus("");
@@ -117,12 +113,12 @@ export default function ArimaChartTab(){
         </div>
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
-      <SpecChart rows={rows} legendLabel="ARIMA" />
+      <SpecChart rows={rows} />
     </div>
   );
 }
 
-function SpecChart({ rows, legendLabel }){
+function SpecChart({ rows }){
   if (!rows || !rows.length) return null;
 
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
@@ -133,7 +129,7 @@ function SpecChart({ rows, legendLabel }){
   const startIdx = 7;              // forecast begins after 7 pre-roll days
 
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => [r.value, r.fv]).filter(v => v!=null).map(Number);
+  const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
@@ -145,6 +141,12 @@ function SpecChart({ rows, legendLabel }){
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
+
+  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
 
   function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
@@ -175,30 +177,36 @@ function SpecChart({ rows, legendLabel }){
       {/* pre-roll (exact 7 days) */}
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
+      {/* forecast interval polygon (light gold) */}
+      {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
+
       {/* series */}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
       <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
       <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+      <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+      <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
 
       {/* x ticks */}
       {rows.map((r,i)=>(
         <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
-          <text x={10} y={0} fontSize="11" fill="#666" transform={`rotate(90 10 0)`} textAnchor="start">{fmtMDY(r.date)}</text>
+          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
         </g>
       ))}
 
-      <Legend x={pad.left+10} y={pad.top+10} legendLabel={legendLabel} />
+      <Legend x={pad.left+10} y={pad.top+10} />
     </svg>
   );
 }
 
-// Simplified legend (no interval band)
-function Legend({ x, y, legendLabel }){
+// Updated legend: no Low/High entries; boxed over white background
+function Legend({ x, y }){
   const items = [
     { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
     { type:"line", color:"#000",     label:"Actuals (for comparison)", width:2.4, dash:"4,6" },
-    { type:"line", color:"#1f77b4",  label: legendLabel, width:2.4, dash:null },
+    { type:"line", color:"#1f77b4",  label:"Targeted Seasonal Forecast", width:2.4, dash:null },
+    { type:"fill", color:"rgba(255,215,0,0.22)", label:"Forecast Interval" },
     { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical" },
   ];
   const rowH = 18;
