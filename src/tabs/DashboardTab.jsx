@@ -1,5 +1,5 @@
 // src/tabs/DashboardTab.jsx
-// Dashboard: three mini charts (arima_m, hwes_m, ses_m) + full SpecChart
+// 4 copies of SpecChart from ChartsTab.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -77,16 +77,7 @@ export default function DashboardTab(){
       const days = daysBetweenUTC(preRollStart, end);
       const strict = days.map(d => {
         const r = byDate.get(d) || {};
-        return { 
-          date: d, 
-          value: r.value ?? null, 
-          fv: r.fv ?? null, 
-          low: r.low ?? null, 
-          high: r.high ?? null, 
-          arima_m: r.arima_m ?? null,
-          hwes_m: r.hwes_m ?? null,
-          ses_m: r.ses_m ?? null
-        };
+        return { date: d, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
       });
       setRows(strict);
       setStatus("");
@@ -95,7 +86,7 @@ export default function DashboardTab(){
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Dashboard — 3 Model Lines + Full Forecast</h2>
+      <h2 style={{marginTop:0}}>Dashboard — 4 Charts</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
@@ -124,9 +115,9 @@ export default function DashboardTab(){
       </div>
 
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <MiniChart title="ARIMA_M" rows={rows} field="arima_m" />
-        <MiniChart title="HWES_M" rows={rows} field="hwes_m" />
-        <MiniChart title="SES_M" rows={rows} field="ses_m" />
+        <SpecChart rows={rows} />
+        <SpecChart rows={rows} />
+        <SpecChart rows={rows} />
       </div>
 
       <div style={{marginTop:16}}>
@@ -136,24 +127,18 @@ export default function DashboardTab(){
   );
 }
 
-// MiniChart: historical + actuals + one forecast line (field). No interval, fv, low/high.
-function MiniChart({ title, rows, field }){
-  if (!rows || !rows.length) return (
-    <div style={{border:"1px solid #e5e7eb", borderRadius:10, padding:12}}>
-      <div style={{fontWeight:600, marginBottom:8}}>{title}</div>
-      <div className="muted" style={{height:320, display:"flex", alignItems:"center", justifyContent:"center"}}>No data</div>
-    </div>
-  );
+function SpecChart({ rows }){
+  if (!rows || !rows.length) return null;
 
-  const W = 420;
-  const H = 300;
-  const pad = { top: 28, right: 16, bottom: 80, left: 64 };
+  const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
+  const H = 560;
+  const pad = { top: 32, right: 24, bottom: 120, left: 80 };
 
-  const N = rows.length;
-  const startIdx = 7;
+  const N = rows.length;           // 7 pre-roll + month days
+  const startIdx = 7;              // forecast begins after 7 pre-roll days
 
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => [r.value, r[field]]).filter(v => v!=null).map(Number);
+  const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
@@ -164,9 +149,15 @@ function MiniChart({ title, rows, field }){
 
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const modelPts      = rows.map((r,i) => (r[field]!=null && i >= startIdx) ? { i, y:Number(r[field]) } : null).filter(Boolean);
+  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
 
-  function niceTicks(min, max, count=5){
+  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+
+  function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
     const span = max - min;
     const step = Math.pow(10, Math.floor(Math.log10(span / count)));
@@ -178,36 +169,71 @@ function MiniChart({ title, rows, field }){
     const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
     const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
   }
-  const yTicks = niceTicks(Y0, Y1, 5);
+  const yTicks = niceTicks(Y0, Y1, 6);
 
   return (
-    <div style={{border:"1px solid #e5e7eb", borderRadius:10, padding:12}}>
-      <div style={{fontWeight:600, marginBottom:8}}>{title}</div>
-      <svg width={W} height={H} style={{display:"block", width:"100%"}}>
-        <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
-        <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
+    <svg width={W} height={H} style={{display:"block", width:"100%"}}>
+      <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
+      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
 
-        {yTicks.map((v,i)=>(
-          <g key={i}>
-            <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
-            <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
-          </g>
-        ))}
+      {yTicks.map((v,i)=>(
+        <g key={i}>
+          <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
+          <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
+        </g>
+      ))}
 
-        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
+      {/* pre-roll (exact 7 days) */}
+      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
-        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
-        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-        <path d={path(modelPts)}      fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+      {/* forecast interval polygon (light gold) */}
+      {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
 
-        {rows.map((r,i)=>(
-          <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
-            <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
-            <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
-          </g>
-        ))}
-      </svg>
-    </div>
+      {/* series */}
+      <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+      <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
+      <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+      <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+      <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+
+      {/* x ticks */}
+      {rows.map((r,i)=>(
+        <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
+          <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
+          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
+        </g>
+      ))}
+
+      <Legend x={pad.left+10} y={pad.top+10} />
+    </svg>
   );
 }
 
+// Updated legend: no Low/High entries; boxed over white background
+function Legend({ x, y }){
+  const items = [
+    { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
+    { type:"line", color:"#000",     label:"Actuals (for comparison)", width:2.4, dash:"4,6" },
+    { type:"line", color:"#1f77b4",  label:"Targeted Seasonal Forecast", width:2.4, dash:null },
+    { type:"fill", color:"rgba(255,215,0,0.22)", label:"Forecast Interval" },
+    { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical" },
+  ];
+  const rowH = 18;
+  const padBox = 10;
+  const boxW = 280;
+  const boxH = padBox*2 + items.length*rowH;
+  return (
+    <g>
+      <rect x={x-12} y={y-16} width={boxW} height={boxH} fill="#fff" stroke="#ddd" />
+      {items.map((it,i)=>(
+        <g key={i} transform={`translate(${x}, ${y + i*rowH})`}>
+          {it.type==="line"
+            ? <line x1={0} y1={0} x2={24} y2={0} stroke={it.color} strokeWidth={it.width} strokeDasharray={it.dash||"0"} />
+            : <rect x={0} y={-7} width={24} height={14} fill={it.color} />
+          }
+          <text x={30} y={4} fontSize="12" fill="#333">{it.label}</text>
+        </g>
+      ))}
+    </g>
+  );
+}
