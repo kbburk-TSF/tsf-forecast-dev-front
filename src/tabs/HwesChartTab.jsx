@@ -14,7 +14,7 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-const VIEW = "tsf_vw_daily_best_hwes_a0";
+const VIEW = "engine.tsf_hwes_m_a0";
 
 export default function HwesChartTab(){
   const [ids, setIds] = useState([]);
