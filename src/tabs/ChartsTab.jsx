@@ -1,5 +1,5 @@
 // ChartsTab.jsx
-// Version: v2 (polygon band, full-width, legend, strict spec)
+// Version: v3 (polygon band, full-width, legend, strict spec)
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
