@@ -4,16 +4,17 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 // --- local API bindings (auto-injected) ---
-const __BASE = "/ses";
+const __ORIGIN = (typeof window !== 'undefined' && (window.API_BASE || window.BACKEND_BASE)) ? (window.API_BASE || window.BACKEND_BASE) : "";
+const __BASE = `${__ORIGIN}/ses`;
 async function listForecastIds() {
-  const r = await fetch(`${__BASE}/ids`);
+  const r = await fetch(`${__BASE}/ids`, { credentials: 'include' });
   if (!r.ok) throw new Error(`Failed to load IDs: ${r.status}`);
   return r.json();
 }
 async function queryView(params) {
   const qs = new URLSearchParams(params || {}).toString();
   const url = qs ? `${__BASE}/query?${qs}` : `${__BASE}/query`;
-  const r = await fetch(url);
+  const r = await fetch(url, { credentials: 'include' });
   if (!r.ok) throw new Error(`Query failed: ${r.status}`);
   return r.json();
 }
