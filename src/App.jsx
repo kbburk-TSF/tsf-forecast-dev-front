@@ -19,7 +19,7 @@ const TABS = [
   { key:"arima",     label:"ARIMA Chart" },
   { key:"hwes",      label:"HWES Chart" },
   { key:"ses",       label:"SES Chart" },
-  { key:"four",      label:"4‑Chart Display" },
+  { key:"four",      label:"4-Chart Display" },
 ];
 
 export default function App(){

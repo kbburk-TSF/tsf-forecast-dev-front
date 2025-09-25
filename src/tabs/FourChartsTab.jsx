@@ -2,31 +2,18 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 /**
- * Ground rules followed:
- * - Four independent charts, each calls its own backend route set.
- * - A single selector bar (forecast_name and start month) drives all four calls.
- * - No cross-table joins or inference; each chart queries only its own route.
- * - We DO NOT fabricate dates; we render exactly what the API returns.
- * - We request a date range that starts 7 days before the selected month
- *   and ends at the end of that month, so the pre-roll is included.
- * - Pre-roll area is shaded; pre-roll shows only "value" (historical) line.
- * - Forecast line ("fv") is hidden for the pre-roll span.
- * - X-axis shows actual dates (rotated 90°); Y-axis is the numeric values.
+ * Four independent charts. Single selector bar.
+ * Selectors are populated EXCLUSIVELY from the FULL table via `/views` routes:
+ *  - Forecast Name dropdown from GET /views/ids
+ *  - Start Month dropdown from POST /views/query (for the selected forecast_id)
  *
- * Assumed backend routes (already provided by user):
- *   ARIMA: GET /arima/ids, POST /arima/query
- *   HWES : GET /hwes/ids,  POST /hwes/query
- *   SES  : GET /ses/ids,   POST /ses/query
- *   FULL : GET /views/ids, POST /views/query  (tsf_vw_full)
- *
- * Each POST body includes: { forecast_id, date_from, date_to }
+ * No joins or assumptions. Exact dates plotted as returned by APIs.
  */
 
-// ---------- tiny helpers
+// ---------- helpers
 function fmtDate(d) {
   const dt = new Date(d);
   if (isNaN(dt)) return String(d);
-  // yyyy-mm-dd
   return dt.toISOString().slice(0,10);
 }
 function startOfMonthISO(yyyyMM) {
@@ -36,7 +23,7 @@ function startOfMonthISO(yyyyMM) {
 }
 function endOfMonthISO(yyyyMM) {
   const [y,m] = yyyyMM.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m, 0)); // day 0 of next month = last day of month
+  const dt = new Date(Date.UTC(y, m, 0));
   return fmtDate(dt);
 }
 function minusDaysISO(iso, days) {
@@ -59,14 +46,18 @@ async function postQuery(route, body) {
   return res.json();
 }
 
-// ---------- minimal SVG line chart (no dependencies)
+function uniq(arr){ return [...new Set(arr)]; }
+function toYYYYMM(iso){
+  if (!iso) return null;
+  return String(iso).slice(0,7);
+}
+
+// Minimal SVG chart (same as v1 except selectors differ)
 function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }){
-  // data: array of rows with {date, value, fv}
   const padding = { top: 10, right: 12, bottom: 80, left: 48 };
   const innerW = width - padding.left - padding.right;
   const innerH = height - padding.top - padding.bottom;
 
-  // x domain as sorted unique dates
   const dates = useMemo(() => {
     const arr = [...new Set(data.map(r => r.date))].sort();
     return arr;
@@ -82,11 +73,8 @@ function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }
     return padding.left + (i / Math.max(1, dates.length - 1)) * innerW;
   }
   function yScale(v){
-    // invert
     return padding.top + innerH - ((v - (yMin - yPad)) / ((yMax + yPad) - (yMin - yPad))) * innerH;
   }
-
-  // paths
   const valuePoints = data.filter(r => r.value != null && isFinite(r.value)).map(r => [xScale(r.date), yScale(r.value)]);
   const fvPoints    = data.filter(r => r.fv    != null && isFinite(r.fv)).map(r => [xScale(r.date), yScale(r.fv   )]);
 
@@ -95,20 +83,14 @@ function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }
     return "M " + points.map(p => `${p[0]},${p[1]}`).join(" L ");
   }
 
-  // preroll shading: from (monthStart - 7) .. (monthStart - 1)
   const prerollStart = minusDaysISO(monthStartISO, prerollDays);
   const prerollDates = dates.filter(d => d >= prerollStart && d < monthStartISO);
   const x0 = prerollDates.length ? xScale(prerollDates[0]) : xScale(monthStartISO);
   const x1 = prerollDates.length ? xScale(prerollDates[prerollDates.length - 1]) : xScale(monthStartISO);
-
-  // Hide forecast line during pre-roll by clipping
-  // We'll draw fv path but overlay a white rectangle over pre-roll fv area.
   const clipId = `clip-${Math.random().toString(36).slice(2)}`;
 
   return (
     <svg width={width} height={height} style={{border:"1px solid #e8e8ef", borderRadius:8, background:"#fff"}}>
-      {/* axes */}
-      {/* y ticks */}
       {[0,0.25,0.5,0.75,1].map(t => {
         const y = padding.top + innerH - t*innerH;
         const val = (yMin - yPad) + t*((yMax + yPad) - (yMin - yPad));
@@ -120,14 +102,8 @@ function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }
         );
       })}
 
-      {/* pre-roll shading */}
       <rect x={Math.min(x0,x1)} y={padding.top} width={Math.abs(x1-x0)} height={innerH} fill="#f6f7fb" />
-
-      {/* value line: dotted? The spec says: historical solid; actual values dotted.
-          We'll render "value" as dotted (actuals) and that's the full dataset; */}
       <path d={toPath(valuePoints)} fill="none" stroke="#111" strokeWidth="1.5" strokeDasharray="3,4" />
-
-      {/* forecast line after pre-roll: use clipping to hide pre-roll portion */}
       <clipPath id={clipId}>
         <rect x={xScale(monthStartISO)} y={padding.top} width={innerW} height={innerH} />
       </clipPath>
@@ -135,9 +111,8 @@ function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }
         <path d={toPath(fvPoints)} fill="none" stroke="#2b7cff" strokeWidth="1.6" />
       </g>
 
-      {/* x-axis with rotated labels */}
       <line x1={padding.left} x2={padding.left+innerW} y1={padding.top+innerH} y2={padding.top+innerH} stroke="#ccc" />
-      {dates.map((d,i) => {
+      {dates.map((d) => {
         const x = xScale(d);
         return (
           <g key={d}>
@@ -152,10 +127,14 @@ function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }
   );
 }
 
-// ---------- main tab
 export default function FourChartsTab(){
+  const [names, setNames] = useState([]);          // from /views/ids
   const [forecastName, setForecastName] = useState("");
-  const [month, setMonth] = useState(new Date().toISOString().slice(0,7)); // YYYY-MM
+  const [forecastId, setForecastId] = useState(null);
+
+  const [months, setMonths] = useState([]);        // computed from /views/query for selected id
+  const [month, setMonth] = useState("");          // YYYY-MM
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
 
@@ -164,37 +143,67 @@ export default function FourChartsTab(){
   const [sesRows, setSesRows] = useState([]);
   const [fullRows, setFullRows] = useState([]);
 
-  const monthStartISO = useMemo(() => startOfMonthISO(month), [month]);
-  const dateFrom = useMemo(() => minusDaysISO(monthStartISO, 7), [monthStartISO]);
-  const dateTo = useMemo(() => endOfMonthISO(month), [month]);
+  // Load forecast_name options from FULL table
+  useEffect(() => {
+    (async () => {
+      try{
+        const list = await getIds("/views"); // expect [{forecast_id, forecast_name}, ...]
+        setNames(list.map(x => ({id: x.forecast_id, name: x.forecast_name})));
+      }catch(e){
+        console.error(e);
+        setErr(String(e.message || e));
+      }
+    })();
+  }, []);
 
-  async function resolveIdByName(route, name){
-    const list = await getIds(route); // expect [{forecast_id, forecast_name}, ...]
-    const item = list.find(x => x.forecast_name === name) || list.find(x => String(x.forecast_name).toLowerCase() === String(name).toLowerCase());
-    return item ? item.forecast_id : null;
-  }
+  // When forecastName changes, resolve id (from the same /views ids list) and load available months
+  useEffect(() => {
+    (async () => {
+      setErr("");
+      setForecastId(null);
+      setMonths([]);
+      setMonth("");
+
+      if (!forecastName) return;
+      try{
+        // resolve id
+        const list = await getIds("/views");
+        const item = list.find(x => x.forecast_name === forecastName);
+        const id = item ? item.forecast_id : null;
+        setForecastId(id);
+
+        if (id){
+          // fetch all rows for this id from FULL table and compute months present
+          const rows = await postQuery("/views", { forecast_id: id });
+          const ym = uniq(rows.map(r => toYYYYMM(r.date || r.dt || r.day || r.ds)).filter(Boolean)).sort();
+          setMonths(ym);
+          if (ym.length) setMonth(ym[0]);
+        }
+      }catch(e){
+        console.error(e);
+        setErr(String(e.message || e));
+      }
+    })();
+  }, [forecastName]);
+
+  const monthStartISO = useMemo(() => month ? startOfMonthISO(month) : "", [month]);
+  const dateFrom = useMemo(() => month ? minusDaysISO(monthStartISO, 7) : "", [monthStartISO]);
+  const dateTo = useMemo(() => month ? endOfMonthISO(month) : "", [month]);
 
   async function loadAll(){
+    if (!forecastId || !month) return;
     setErr("");
     setLoading(true);
     try{
-      const [arimaId, hwesId, sesId, fullId] = await Promise.all([
-        resolveIdByName("/arima", forecastName),
-        resolveIdByName("/hwes",  forecastName),
-        resolveIdByName("/ses",   forecastName),
-        resolveIdByName("/views", forecastName),
-      ]);
-
-      const bodyFor = (forecast_id) => ({ forecast_id, date_from: dateFrom, date_to: dateTo });
+      const body = { forecast_id: forecastId, date_from: dateFrom, date_to: dateTo };
 
       const [arima, hwes, ses, full] = await Promise.all([
-        arimaId ? postQuery("/arima", bodyFor(arimaId)) : Promise.resolve([]),
-        hwesId  ? postQuery("/hwes",  bodyFor(hwesId )) : Promise.resolve([]),
-        sesId   ? postQuery("/ses",   bodyFor(sesId  )) : Promise.resolve([]),
-        fullId  ? postQuery("/views", bodyFor(fullId )) : Promise.resolve([]),
+        postQuery("/arima", body),
+        postQuery("/hwes",  body),
+        postQuery("/ses",   body),
+        postQuery("/views", body),
       ]);
 
-      // Normalize to {date, value, fv}
       const mapRows = (rows) => rows.map(r => ({
         date: r.date || r.dt || r.day || r.ds,
         value: (typeof r.value === "number" ? r.value : (r.actual ?? r.y ?? null)),
@@ -213,33 +222,31 @@ export default function FourChartsTab(){
     }
   }
 
-  // Optional: automatically load when user changes inputs after initial select
-  // We won't auto-load to avoid surprise calls. User clicks Load.
-
   return (
     <div style={{padding:"12px 8px"}}>
-      {/* Selector Bar */}
+      {/* Selector Bar (from FULL table only) */}
       <div style={{display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:12}}>
         <label style={{display:"flex", flexDirection:"column", fontSize:12}}>
           <span>Forecast Name</span>
-          <input
-            type="text"
-            value={forecastName}
-            onChange={e => setForecastName(e.target.value)}
-            placeholder="Enter exact forecast_name"
-            style={{padding:"8px 10px", border:"1px solid #dfe3ea", borderRadius:8, minWidth:280}}
-          />
+          <select value={forecastName} onChange={e => setForecastName(e.target.value)}
+            style={{padding:"8px 10px", border:"1px solid #dfe3ea", borderRadius:8, minWidth:320}}>
+            <option value="">Select forecast_name</option>
+            {names.map(n => (
+              <option key={n.id} value={n.name}>{n.name}</option>
+            ))}
+          </select>
         </label>
+
         <label style={{display:"flex", flexDirection:"column", fontSize:12}}>
           <span>Start Month</span>
-          <input
-            type="month"
-            value={month}
-            onChange={e => setMonth(e.target.value)}
-            style={{padding:"8px 10px", border:"1px solid #dfe3ea", borderRadius:8}}
-          />
+          <select value={month} onChange={e => setMonth(e.target.value)}
+            style={{padding:"8px 10px", border:"1px solid #dfe3ea", borderRadius:8, minWidth:160}} disabled={!months.length}>
+            <option value="">{months.length ? "Select month" : "—"}</option>
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </label>
-        <button onClick={loadAll} disabled={loading || !forecastName}
+
+        <button onClick={loadAll} disabled={loading || !forecastId || !month}
           style={{padding:"10px 14px", background:"#111", color:"#fff", border:"1px solid #111", borderRadius:8, cursor:"pointer"}}>
           {loading ? "Loading…" : "Load"}
         </button>
