@@ -1,5 +1,5 @@
 // src/tabs/ChartsTab.jsx
-// v6 — default export present
+// v7 — fixes "dead-space month" by clamping X‑domain to usable data only
 // Spec:
 // - 7‑day historical pre‑roll shows ONLY actuals (solid black). No low/high, no polygon, no fv there.
 // - Forecast window (first day of selected month onward): fv + low + high + green polygon start.
@@ -141,11 +141,21 @@ function SpecChart({ rows, startMonth }){
   const H = 560;
   const pad = { top: 32, right: 24, bottom: 120, left: 80 };
 
-  // domains
-  const dates = rows.map(r => new Date(r.date));
-  const minX = new Date(Math.min(...dates));
-  const maxX = new Date(Math.max(...dates));
-  const values = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
+  // windows
+  const forecastStart = new Date(startMonth);                 // 1st of month
+  const histFrom = new Date(forecastStart); histFrom.setDate(forecastStart.getDate()-7);
+  const histTo = new Date(forecastStart);   histTo.setDate(forecastStart.getDate()-1);
+
+  // keep ONLY rows with any usable values; this drops all‑null spacer dates
+  const usable = rows.filter(r => r && r.date && (r.value!=null || r.fv!=null || r.low!=null || r.high!=null));
+  if (!usable.length) return null;
+
+  // domains — clamp X to [histFrom, last usable]
+  const lastUsableDate = new Date(usable[usable.length-1].date);
+  const minX = new Date(Math.min(histFrom.getTime(), new Date(usable[0].date).getTime()));
+  const maxX = new Date(Math.max(histTo.getTime(), lastUsableDate.getTime()));
+
+  const values = usable.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = values.length ? Math.min(...values) : 0;
   const yMax = values.length ? Math.max(...values) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
@@ -158,22 +168,17 @@ function SpecChart({ rows, startMonth }){
   };
   const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
 
-  // windows
-  const forecastStart = new Date(startMonth);                 // 1st of month
-  const histFrom = new Date(forecastStart); histFrom.setDate(forecastStart.getDate()-7);
-  const histTo = new Date(forecastStart);   histTo.setDate(forecastStart.getDate()-1);
-
   // series (strict rules)
-  const ptsValAll = rows.filter(r => r.value!=null).map(r => ({ x:new Date(r.date), y:Number(r.value) }));
+  const ptsValAll = usable.filter(r => r.value!=null).map(r => ({ x:new Date(r.date), y:Number(r.value) }));
   const ptsValHist = ptsValAll.filter(p => p.x >= histFrom && p.x <= histTo);     // solid
   const ptsValFut  = ptsValAll.filter(p => p.x >= forecastStart);                 // dotted into forecast
 
-  const ptsLow  = rows.filter(r => r.low!=null  && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.low) }));
-  const ptsHigh = rows.filter(r => r.high!=null && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.high) }));
-  const ptsFv   = rows.filter(r => r.fv!=null   && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.fv) }));
+  const ptsLow  = usable.filter(r => r.low!=null  && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.low) }));
+  const ptsHigh = usable.filter(r => r.high!=null && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.high) }));
+  const ptsFv   = usable.filter(r => r.fv!=null   && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.fv) }));
 
   // polygon only in forecast period
-  const band = rows
+  const band = usable
     .filter(r => r.low!=null && r.high!=null && new Date(r.date) >= forecastStart)
     .map(r => ({ x:new Date(r.date), low:Number(r.low), high:Number(r.high) }));
   const bandTop = band.map(p => [xScale(p.x), yScale(p.high)]);
@@ -183,8 +188,8 @@ function SpecChart({ rows, startMonth }){
 
   const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.x)+" "+yScale(p.y)).join(" ") : "";
 
-  // ticks
-  const xDays = rows.map(r => new Date(r.date)).sort((a,b)=>a-b);
+  // ticks: show only usable dates
+  const xDays = usable.map(r => new Date(r.date)).sort((a,b)=>a-b);
   const yTicks = niceTicks(Y0, Y1, 6);
 
   return (
@@ -218,7 +223,7 @@ function SpecChart({ rows, startMonth }){
       <path d={path(ptsValHist)} fill="none" stroke="#000" strokeWidth={1.8}/>
       <path d={path(ptsValFut)}  fill="none" stroke="#000" strokeWidth={1.8} strokeDasharray="3,4"/>
 
-      {/* x ticks for EACH date, rotated 90° */}
+      {/* x ticks for EACH usable date, rotated 90° */}
       {xDays.map((d,i)=>(
         <g key={i} transform={`translate(${xScale(d)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
