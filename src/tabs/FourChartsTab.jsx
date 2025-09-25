@@ -3,15 +3,13 @@ import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
 /**
- * FourChartsTab — follows EXACTLY the ViewsTab selection flow.
- * - Forecast dropdown from listForecastIds({scope:"global", model:"", series:""})
- * - Start Month dropdown derived from queryView({forecast_id}) dates (YYYY-MM)
- * - On Load: send SAME forecast_id and [month-7d, month-end] to /arima, /hwes, /ses,
- *            and call queryView for the FULL (bottom) chart.
- * - No changes elsewhere. No fabricated dates. Exact dates rendered.
+ * FourChartsTab — uses the SAME selectors as ViewsTab:
+ * - Forecast dropdown from listForecastIds({ scope:"global", model:"", series:"" })
+ * - Start Month dropdown derived from queryView({ forecast_id }) dates (YYYY-MM)
+ * On Load, passes {forecast_id, date_from: monthStart-7d, date_to: monthEnd}
+ * to /arima/query, /hwes/query, /ses/query and uses queryView for the FULL chart.
  */
 
-// ----- UTC date helpers (identical behavior to ViewsTab)
 function utcDateFromYmd(ymd){ const [y,m,d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m-1, d)); }
 function ymdUTC(d){ return d.toISOString().slice(0,10); }
 function firstOfMonthUTC(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
@@ -24,7 +22,6 @@ async function postJson(url, body){
   return res.json();
 }
 
-// ----- Minimal SVG line chart (solid pre-roll shading, dotted actuals, forecast after month start)
 function LineChart({ data, width=520, height=220, monthStartISO }){
   const padding = { top: 10, right: 12, bottom: 80, left: 48 };
   const innerW = width - padding.left - padding.right;
@@ -95,11 +92,11 @@ function LineChart({ data, width=520, height=220, monthStartISO }){
 }
 
 export default function FourChartsTab(){
-  // Dropdowns from FULL table (same as ViewsTab)
-  const [ids, setIds] = useState([]); // [{id,name}]
+  // Dropdowns from FULL (same as ViewsTab)
+  const [ids, setIds] = useState([]);
   const [forecastId, setForecastId] = useState("");
-  const [allDates, setAllDates] = useState([]); // ["YYYY-MM-DD"]
-  const [startMonth, setStartMonth] = useState(""); // "YYYY-MM-01"
+  const [allDates, setAllDates] = useState([]);
+  const [startMonth, setStartMonth] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -109,23 +106,21 @@ export default function FourChartsTab(){
   const [sesRows, setSesRows] = useState([]);
   const [fullRows, setFullRows] = useState([]);
 
-  // Initial load: forecast list
+  // Load forecast list via API helper (NOT direct /views/ids)
   useEffect(() => {
     (async () => {
       try{
-        const data = await listForecastIds({ scope: "global", model: "", series: "" });
+        const data = await listForecastIds({ scope:"global", model:"", series:"" });
         const norm = (Array.isArray(data) ? data : []).map(x => (
           typeof x === "string" ? { id: x, name: x } : { id: String(x.id ?? x.value ?? x), name: String(x.name ?? x.label ?? x.id ?? x) }
         ));
         setIds(norm);
         if (norm.length) setForecastId(norm[0].id);
-      }catch(e){
-        setErr("Failed ids for /views");
-      }
+      }catch(e){ setErr("Failed ids for /views"); }
     })();
   }, []);
 
-  // When forecast changes, fetch available dates to derive months
+  // When forecast changes, fetch FULL rows to derive months
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
@@ -144,9 +139,7 @@ export default function FourChartsTab(){
         } else {
           setStartMonth("");
         }
-      }catch(e){
-        setErr("Failed query for /views");
-      }
+      }catch(e){ setErr("Failed query for /views"); }
     })();
   }, [forecastId]);
 
@@ -163,7 +156,6 @@ export default function FourChartsTab(){
     if (!forecastId || !monthStartISO) return;
     setErr(""); setLoading(true);
     try{
-      // FULL (bottom chart)
       const { rows: full } = await queryView({
         scope:"global", model:"", series:"",
         forecast_id: forecastId,
@@ -171,7 +163,6 @@ export default function FourChartsTab(){
         page: 1, page_size: 10000
       });
 
-      // ARIMA / HWES / SES independent routes
       const payload = { forecast_id: forecastId, date_from: dateFrom, date_to: dateTo, page: 1, page_size: 10000 };
       const [arima, hwes, ses] = await Promise.all([
         postJson("/arima/query", payload),
@@ -189,16 +180,13 @@ export default function FourChartsTab(){
       setArimaRows(norm(arima));
       setHwesRows(norm(hwes));
       setSesRows(norm(ses));
-    }catch(e){
-      setErr(String(e.message || e));
-    }finally{
-      setLoading(false);
-    }
+    }catch(e){ setErr(String(e.message || e)); }
+    finally{ setLoading(false); }
   }
 
   return (
     <div style={{padding:"12px 8px"}}>
-      {/* Selector bar from FULL table */}
+      {/* Selector bar (identical inputs as ViewsTab) */}
       <div style={{display:"flex", gap:12, alignItems:"end", flexWrap:"wrap", marginBottom:12}}>
         <div>
           <label style={{display:"block", fontSize:12, marginBottom:4}}>Forecast (forecast_name)</label>
