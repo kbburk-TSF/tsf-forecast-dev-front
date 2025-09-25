@@ -1,14 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
 /**
- * ViewsTab (minimal)
- * Mirrors backend /views form:
- * - Single source view: engine.tsf_vw_full
- * - Dropdown shows forecast_name (value = forecast_id)
- * - Two date inputs (from/to)
- * - Load -> POST /views/query with {scope:"global", model:"", series:"", forecast_id, date_from, date_to}
- * - Renders table with columns matching V12_14 MAPE view
+ * ViewsTab — start-month + months-to-display
+ * - Dropdown: forecast_name (value=forecast_id)
+ * - Dropdown: start month (computed from available dates in the selected forecast)
+ * - Dropdown: months to display (1,2,3)
+ * - Loads rows for full forecast horizon within the selected window,
+ *   plus 7 days of history prior to the first day of the selected month.
+ * - Columns reflect MAPE view.
+ * - NOTE: low/high are distinct from fv_l/fv_u.
  */
 
 const COLS = [
@@ -19,21 +20,29 @@ const COLS = [
   "low","high"
 ];
 
+// Helpers
+function ymd(d){ return d.toISOString().slice(0,10); }
+function firstOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+function lastOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
+function addMonths(d, n){ return new Date(d.getFullYear(), d.getMonth()+n, d.getDate()); }
+function minusDays(d, n){ const t = new Date(d); t.setDate(t.getDate()-n); return t; }
+
 export default function ViewsTab(){
   const [ids, setIds] = useState([]);            // [{id, name}]
   const [forecastId, setForecastId] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [allDates, setAllDates] = useState([]);  // ["YYYY-MM-DD"] for selected forecast (sampled)
+  const [startMonth, setStartMonth] = useState(""); // "YYYY-MM-01"
+  const [monthsCount, setMonthsCount] = useState(1);
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState("");
 
+  // Initial load of forecast list
   useEffect(() => {
     (async () => {
       try{
         setStatus("Loading forecasts…");
         const data = await listForecastIds({ scope: "global", model: "", series: "" });
-        // listForecastIds previously returned array or objects; normalize to [{id,name}] if necessary
         const norm = (Array.isArray(data) ? data : []).map(x => (
           typeof x === "string" ? { id: x, name: x } : { id: String(x.id ?? x.value ?? x), name: String(x.name ?? x.label ?? x.id ?? x) }
         ));
@@ -46,19 +55,56 @@ export default function ViewsTab(){
     })();
   }, []);
 
+  // When forecast changes, fetch available dates (we use a wide page_size to avoid extra endpoint)
+  useEffect(() => {
+    if (!forecastId) return;
+    (async () => {
+      try{
+        setStatus("Scanning dates…");
+        const { rows } = await queryView({
+          scope:"global", model:"", series:"",
+          forecast_id: forecastId,
+          date_from: null, date_to: null,
+          page: 1, page_size: 10000
+        });
+        const dates = Array.from(new Set((rows||[]).map(r => r?.date).filter(Boolean))).sort();
+        setAllDates(dates);
+        // default start = first full month present (use first date's month)
+        if (dates.length){
+          const d0 = new Date(dates[0]);
+          const start = firstOfMonth(d0);
+          setStartMonth(ymd(start));
+        } else {
+          setStartMonth("");
+        }
+        setStatus("");
+      }catch(e){
+        setStatus("Failed to scan dates: " + String(e.message || e));
+      }
+    })();
+  }, [forecastId]);
+
+  const monthOptions = useMemo(() => {
+    // derive unique YYYY-MM from available dates
+    const uniq = Array.from(new Set(allDates.map(s => s.slice(0,7)))).sort();
+    return uniq.map(m => ({ value: m + "-01", label: m }));
+  }, [allDates]);
+
   async function load(){
     try{
-      setStatus("Loading…");
-      setRows([]); setTotal(0);
+      if (!forecastId || !startMonth) return;
+      setStatus("Loading…"); setRows([]); setTotal(0);
+
+      const start = new Date(startMonth);
+      const end = lastOfMonth(addMonths(start, monthsCount - 1));
+      const histFrom = minusDays(firstOfMonth(start), 7);
+
       const payload = {
-        scope: "global",
-        model: "",
-        series: "",
-        forecast_id: forecastId || null,   // backend expects string
-        date_from: from || null,
-        date_to: to || null,
-        page: 1,
-        page_size: 2000
+        scope:"global", model:"", series:"",
+        forecast_id: forecastId,
+        date_from: ymd(histFrom),
+        date_to: ymd(end),
+        page: 1, page_size: 5000
       };
       const { rows, total } = await queryView(payload);
       setRows(rows || []);
@@ -92,16 +138,26 @@ export default function ViewsTab(){
             {ids.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
           </select>
         </div>
+
         <div>
-          <label>From</label><br/>
-          <input className="input" type="date" value={from} onChange={e=>setFrom(e.target.value)} />
+          <label>Start month</label><br/>
+          <select className="input" value={startMonth} onChange={e=>setStartMonth(e.target.value)} disabled={!monthOptions.length}>
+            {!monthOptions.length && <option>(none)</option>}
+            {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
+
         <div>
-          <label>To</label><br/>
-          <input className="input" type="date" value={to} onChange={e=>setTo(e.target.value)} />
+          <label>Months to show</label><br/>
+          <select className="input" value={monthsCount} onChange={e=>setMonthsCount(Number(e.target.value))}>
+            <option value={1}>1</option>
+            <option value={2}>2</option>
+            <option value={3}>3</option>
+          </select>
         </div>
+
         <div>
-          <button className="btn" onClick={load} disabled={!forecastId}>Run</button>
+          <button className="btn" onClick={load} disabled={!forecastId || !startMonth}>Run</button>
         </div>
         <div>
           <button className="btn" onClick={downloadCsv} disabled={!rows.length}>Download CSV</button>
