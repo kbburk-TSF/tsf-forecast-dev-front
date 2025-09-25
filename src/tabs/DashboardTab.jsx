@@ -1,5 +1,5 @@
 // src/tabs/DashboardTab.jsx
-// Top row: remap fv to arima_m/hwes_m/ses_m and null out low/high, then pass to SpecChart.
+// Top row: remap fv to ARIMA_M/HWES_M/SES_M and null out low/high, then pass to SpecChart.
 // Bottom row: pass rows unchanged.
 //
 // CHANGELOG (2025-09-25):
@@ -186,9 +186,9 @@ export default function DashboardTab(){
           fv: r.fv ?? null,
           low: r.low ?? null,
           high: r.high ?? null,
-          arima_m: r.arima_m ?? null,
-          hwes_m:  r.hwes_m ?? null,
-          ses_m:   r.ses_m ?? null
+          ARIMA_M: r.ARIMA_M ?? null,
+          HWES_M:  r.HWES_M ?? null,
+          SES_M:   r.SES_M ?? null
         };
       });
       setRows(strict);
@@ -197,9 +197,9 @@ export default function DashboardTab(){
   }
 
   const mapTo = (rows, field) => (rows||[]).map(r => ({ ...r, fv: r[field] ?? null, low: null, high: null }));
-  const rowsARIMA = mapTo(rows, "arima_m");
-  const rowsHWES  = mapTo(rows, "hwes_m");
-  const rowsSES   = mapTo(rows, "ses_m");
+  const rowsARIMA = mapTo(rows, "ARIMA_M");
+  const rowsHWES  = mapTo(rows, "HWES_M");
+  const rowsSES   = mapTo(rows, "SES_M");
 
   return (
     <div style={{width:"100%"}}>
