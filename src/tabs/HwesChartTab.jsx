@@ -1,6 +1,6 @@
 // src/tabs/HwesChartTab.jsx
-// EXACTLY based on ChartsTab.jsx behavior — no low/high and no interval polygon.
-// Legend forecast label: HWES
+// EXACT ChartsTab behavior (UTC date math, 7-day pre-roll), but NO low/high or interval band.
+// Queries the PRE-BAKED VIEW "tsf_vw_daily_best_hwes_a0" and ALWAYS passes forecast_id.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -14,7 +14,7 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-const VIEW = "engine.tsf_vw_daily_best_hwes_a0";
+const VIEW = "tsf_vw_daily_best_hwes_a0";
 
 export default function HwesChartTab(){
   const [ids, setIds] = useState([]);
@@ -25,10 +25,11 @@ export default function HwesChartTab(){
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("");
 
+  // Load forecast IDs (no extra filters; you select the one you want)
   useEffect(() => {
     (async () => {
       try {
-        const list = await listForecastIds({ scope:"global", model:"", series:"" });
+        const list = await listForecastIds({ scope:"global" });
         const norm = (Array.isArray(list) ? list : []).map(x => (
           typeof x === "string" ? { id:x, name:x }
           : { id:String(x.id ?? x.value ?? x), name:String(x.name ?? x.label ?? x.id ?? x) }
@@ -39,12 +40,13 @@ export default function HwesChartTab(){
     })();
   }, []);
 
+  // Scan months available for this VIEW + forecastId
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
       try {
         setStatus("Scanning dates…");
-        const res = await queryView({ scope:"global", model:"", series:"", view: VIEW, forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
+        const res = await queryView({ scope:"global", view: VIEW, forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
         const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
         const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
         setAllMonths(months);
@@ -65,9 +67,9 @@ export default function HwesChartTab(){
       const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
 
       const res = await queryView({
-        scope:"global", model:"", series:"",
+        scope:"global",
         view: VIEW,
-        forecast_id: forecastId,
+        forecast_id: forecastId,     // REQUIRED for these pre-baked views
         date_from: ymd(preRollStart),
         date_to: ymd(end),
         page:1, page_size: 20000
@@ -90,7 +92,7 @@ export default function HwesChartTab(){
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Forecast Chart — engine.tsf_vw_daily_best_hwes_a0</h2>
+      <h2 style={{marginTop:0}}>Forecast Chart — HWES</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>

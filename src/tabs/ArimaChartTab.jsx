@@ -1,5 +1,6 @@
-// src/tabs/ChartsTab.jsx
-// v13 — index-based plotting + updated legend + light-gold forecast interval
+// src/tabs/ArimaChartTab.jsx
+// EXACT ChartsTab behavior (UTC date math, 7-day pre-roll), but NO low/high or interval band.
+// Queries the PRE-BAKED VIEW "tsf_vw_daily_best_arima_a0" and ALWAYS passes forecast_id.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -13,7 +14,9 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-export default function ChartsTab(){
+const VIEW = "tsf_vw_daily_best_arima_a0";
+
+export default function ArimaChartTab(){
   const [ids, setIds] = useState([]);
   const [forecastId, setForecastId] = useState("");
   const [allMonths, setAllMonths] = useState([]);
@@ -22,10 +25,11 @@ export default function ChartsTab(){
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("");
 
+  // Load forecast IDs (no extra filters; you select the one you want)
   useEffect(() => {
     (async () => {
       try {
-        const list = await listForecastIds({ scope:"global", model:"", series:"" });
+        const list = await listForecastIds({ scope:"global" });
         const norm = (Array.isArray(list) ? list : []).map(x => (
           typeof x === "string" ? { id:x, name:x }
           : { id:String(x.id ?? x.value ?? x), name:String(x.name ?? x.label ?? x.id ?? x) }
@@ -36,12 +40,13 @@ export default function ChartsTab(){
     })();
   }, []);
 
+  // Scan months available for this VIEW + forecastId
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
       try {
         setStatus("Scanning dates…");
-        const res = await queryView({ scope:"global", model:"", series:"", forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
+        const res = await queryView({ scope:"global", view: VIEW, forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
         const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
         const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
         setAllMonths(months);
@@ -62,8 +67,9 @@ export default function ChartsTab(){
       const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
 
       const res = await queryView({
-        scope:"global", model:"", series:"",
-        forecast_id: forecastId,
+        scope:"global",
+        view: VIEW,
+        forecast_id: forecastId,     // REQUIRED for these pre-baked views
         date_from: ymd(preRollStart),
         date_to: ymd(end),
         page:1, page_size: 20000
@@ -77,7 +83,7 @@ export default function ChartsTab(){
       const days = daysBetweenUTC(preRollStart, end);
       const strict = days.map(d => {
         const r = byDate.get(d) || {};
-        return { date: d, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
+        return { date: d, value: r.value ?? null, fv: r.fv ?? null }; // no low/high
       });
       setRows(strict);
       setStatus("");
@@ -86,7 +92,7 @@ export default function ChartsTab(){
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Forecast Chart — engine.tsf_vw_daily_best_arima_a0</h2>
+      <h2 style={{marginTop:0}}>Forecast Chart — ARIMA</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
@@ -113,12 +119,12 @@ export default function ChartsTab(){
         </div>
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
-      <SpecChart rows={rows} />
+      <SpecChart rows={rows} legendLabel="ARIMA" />
     </div>
   );
 }
 
-function SpecChart({ rows }){
+function SpecChart({ rows, legendLabel }){
   if (!rows || !rows.length) return null;
 
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
@@ -129,7 +135,7 @@ function SpecChart({ rows }){
   const startIdx = 7;              // forecast begins after 7 pre-roll days
 
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
+  const yVals = rows.flatMap(r => [r.value, r.fv]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
@@ -141,12 +147,6 @@ function SpecChart({ rows }){
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
-  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
-  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
-
-  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
-  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
-  const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
 
   function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
@@ -177,36 +177,30 @@ function SpecChart({ rows }){
       {/* pre-roll (exact 7 days) */}
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
-      {/* forecast interval polygon (light gold) */}
-      {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
-
       {/* series */}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
       <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
       <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
-      <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
-      <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
 
       {/* x ticks */}
       {rows.map((r,i)=>(
         <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
-          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
+          <text x={10} y={0} fontSize="11" fill="#666" transform={`rotate(90 10 0)`} textAnchor="start">{fmtMDY(r.date)}</text>
         </g>
       ))}
 
-      <Legend x={pad.left+10} y={pad.top+10} />
+      <Legend x={pad.left+10} y={pad.top+10} legendLabel={legendLabel} />
     </svg>
   );
 }
 
-// Updated legend: no Low/High entries; boxed over white background
-function Legend({ x, y }){
+// Simplified legend (no interval band)
+function Legend({ x, y, legendLabel }){
   const items = [
     { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
     { type:"line", color:"#000",     label:"Actuals (for comparison)", width:2.4, dash:"4,6" },
-    { type:"line", color:"#1f77b4",  label:"Targeted Seasonal Forecast", width:2.4, dash:null },
-    { type:"fill", color:"rgba(255,215,0,0.22)", label:"Forecast Interval" },
+    { type:"line", color:"#1f77b4",  label: legendLabel, width:2.4, dash:null },
     { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical" },
   ];
   const rowH = 18;
