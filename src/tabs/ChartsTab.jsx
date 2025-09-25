@@ -1,13 +1,5 @@
 // src/tabs/ChartsTab.jsx
-// v7 — fixes "dead-space month" by clamping X‑domain to usable data only
-// Spec:
-// - 7‑day historical pre‑roll shows ONLY actuals (solid black). No low/high, no polygon, no fv there.
-// - Forecast window (first day of selected month onward): fv + low + high + green polygon start.
-// - Low & High: solid green lines.
-// - Actuals in forecast window continue as dotted black.
-// - X axis labels for EVERY date, rotated 90°.
-// - Y axis shows nice tick grid + labels.
-// - Full‑width SVG; no external deps.
+// v8 — hard clamps domain/data to [preRollStart, endOfSelectedWindow]; eliminates any pre-month dead space even if backend leaks earlier rows.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -40,7 +32,6 @@ export default function ChartsTab(){
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("");
 
-  // Load available forecasts
   useEffect(() => {
     (async () => {
       try {
@@ -55,7 +46,6 @@ export default function ChartsTab(){
     })();
   }, []);
 
-  // Build month options from dates for selected forecast
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
@@ -128,32 +118,37 @@ export default function ChartsTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
-      <SpecChart rows={rows} startMonth={startMonth} />
+      {/* Pass the explicit clamp window down */}
+      <SpecChart rows={rows} startMonth={startMonth} monthsCount={monthsCount} />
     </div>
   );
 }
 
-function SpecChart({ rows, startMonth }){
+function SpecChart({ rows, startMonth, monthsCount }){
   if (!rows || !rows.length) return null;
 
-  // layout
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
   const H = 560;
   const pad = { top: 32, right: 24, bottom: 120, left: 80 };
 
-  // windows
-  const forecastStart = new Date(startMonth);                 // 1st of month
-  const histFrom = new Date(forecastStart); histFrom.setDate(forecastStart.getDate()-7);
-  const histTo = new Date(forecastStart);   histTo.setDate(forecastStart.getDate()-1);
+  const forecastStart = new Date(startMonth);
+  const histFrom = new Date(firstOfMonth(forecastStart)); histFrom.setDate(histFrom.getDate()-7);
+  const end = lastOfMonth(addMonths(new Date(startMonth), monthsCount - 1));
+  const histTo = new Date(forecastStart); histTo.setDate(forecastStart.getDate()-1);
 
-  // keep ONLY rows with any usable values; this drops all‑null spacer dates
-  const usable = rows.filter(r => r && r.date && (r.value!=null || r.fv!=null || r.low!=null || r.high!=null));
+  // 1) Normalize and drop rows with no data at all
+  const anyData = r => r && r.date && (r.value!=null || r.fv!=null || r.low!=null || r.high!=null);
+  // 2) Hard clamp to [histFrom, end] regardless of what backend returns
+  const inWindow = r => {
+    const d = new Date(r.date);
+    return d >= histFrom && d <= end;
+  };
+  const usable = rows.filter(anyData).filter(inWindow).sort((a,b)=> new Date(a.date)-new Date(b.date));
   if (!usable.length) return null;
 
-  // domains — clamp X to [histFrom, last usable]
-  const lastUsableDate = new Date(usable[usable.length-1].date);
-  const minX = new Date(Math.min(histFrom.getTime(), new Date(usable[0].date).getTime()));
-  const maxX = new Date(Math.max(histTo.getTime(), lastUsableDate.getTime()));
+  // X-domain strictly equals the requested window
+  const minX = histFrom;
+  const maxX = end;
 
   const values = usable.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = values.length ? Math.min(...values) : 0;
@@ -161,23 +156,20 @@ function SpecChart({ rows, startMonth }){
   const yPad = (yMax - yMin) * 0.08 || 1;
   const Y0 = yMin - yPad, Y1 = yMax + yPad;
 
-  // scales
   const xScale = d => {
     const t0 = minX.getTime(), t1 = maxX.getTime(), t = d.getTime();
     return pad.left + (t - t0) * (W - pad.left - pad.right) / Math.max(1, (t1 - t0));
   };
   const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
 
-  // series (strict rules)
   const ptsValAll = usable.filter(r => r.value!=null).map(r => ({ x:new Date(r.date), y:Number(r.value) }));
   const ptsValHist = ptsValAll.filter(p => p.x >= histFrom && p.x <= histTo);     // solid
-  const ptsValFut  = ptsValAll.filter(p => p.x >= forecastStart);                 // dotted into forecast
+  const ptsValFut  = ptsValAll.filter(p => p.x >= forecastStart);                 // dotted
 
   const ptsLow  = usable.filter(r => r.low!=null  && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.low) }));
   const ptsHigh = usable.filter(r => r.high!=null && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.high) }));
   const ptsFv   = usable.filter(r => r.fv!=null   && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.fv) }));
 
-  // polygon only in forecast period
   const band = usable
     .filter(r => r.low!=null && r.high!=null && new Date(r.date) >= forecastStart)
     .map(r => ({ x:new Date(r.date), low:Number(r.low), high:Number(r.high) }));
@@ -188,17 +180,16 @@ function SpecChart({ rows, startMonth }){
 
   const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.x)+" "+yScale(p.y)).join(" ") : "";
 
-  // ticks: show only usable dates
-  const xDays = usable.map(r => new Date(r.date)).sort((a,b)=>a-b);
+  // ticks for each date IN WINDOW only
+  const xDays = usable.map(r => new Date(r.date));
+
   const yTicks = niceTicks(Y0, Y1, 6);
 
   return (
     <svg width={W} height={H} style={{display:"block", width:"100%"}}>
-      {/* axes */}
       <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
       <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
 
-      {/* y grid & labels */}
       {yTicks.map((v,i)=>(
         <g key={i}>
           <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
@@ -212,18 +203,12 @@ function SpecChart({ rows, startMonth }){
       {/* polygon (forecast window only) */}
       {polyPts.length>2 && <polygon points={polyStr} fill="rgba(0,180,0,0.18)" stroke="none" />}
 
-      {/* low/high: solid + forecast window only */}
       <path d={path(ptsLow)}  fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
       <path d={path(ptsHigh)} fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
-
-      {/* forecast fv: forecast window only */}
-      <path d={path(ptsFv)} fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
-
-      {/* actuals: solid (pre-roll) + dotted (forecast window) */}
+      <path d={path(ptsFv)}   fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
       <path d={path(ptsValHist)} fill="none" stroke="#000" strokeWidth={1.8}/>
       <path d={path(ptsValFut)}  fill="none" stroke="#000" strokeWidth={1.8} strokeDasharray="3,4"/>
 
-      {/* x ticks for EACH usable date, rotated 90° */}
       {xDays.map((d,i)=>(
         <g key={i} transform={`translate(${xScale(d)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
@@ -231,7 +216,6 @@ function SpecChart({ rows, startMonth }){
         </g>
       ))}
 
-      {/* legend */}
       <Legend x={pad.left+10} y={pad.top+10} />
     </svg>
   );
