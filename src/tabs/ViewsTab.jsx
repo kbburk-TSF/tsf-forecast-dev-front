@@ -2,12 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
 /**
- * ViewsTab — start-month + months-to-display
- * - Dropdown: forecast_name (value=forecast_id)
- * - Dropdown: start month (computed from available dates in the selected forecast)
- * - Dropdown: months to display (1,2,3)
- * - Loads rows for full forecast horizon within the selected window,
- *   plus 7 days of history prior to the first day of the selected month.
+ * ViewsTab — UTC-safe date windowing
+ * - Start month + months-to-display
+ * - Always requests [startMonth - 7d, endOf(horizonMonth)] in UTC
  * - Columns reflect MAPE view.
  * - NOTE: low/high are distinct from fv_l/fv_u.
  */
@@ -20,17 +17,21 @@ const COLS = [
   "low","high"
 ];
 
-// Helpers
-function ymd(d){ return d.toISOString().slice(0,10); }
-function firstOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
-function lastOfMonth(d){ return new Date(d.getFullYear(), d.getMonth()+1, 0); }
-function addMonths(d, n){ return new Date(d.getFullYear(), d.getMonth()+n, d.getDate()); }
-function minusDays(d, n){ const t = new Date(d); t.setDate(t.getDate()-n); return t; }
+// ----- UTC date helpers (no local TZ drift) -----
+function utcDateFromYmd(ymd){ // "YYYY-MM-DD"
+  const [y,m,d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m-1, d));
+}
+function ymdUTC(d){ return d.toISOString().slice(0,10); }
+function firstOfMonthUTC(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
+function lastOfMonthUTC(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 0)); }
+function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+n, d.getUTCDate())); }
+function minusDaysUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()-n)); }
 
 export default function ViewsTab(){
   const [ids, setIds] = useState([]);            // [{id, name}]
   const [forecastId, setForecastId] = useState("");
-  const [allDates, setAllDates] = useState([]);  // ["YYYY-MM-DD"] for selected forecast (sampled)
+  const [allDates, setAllDates] = useState([]);  // ["YYYY-MM-DD"]
   const [startMonth, setStartMonth] = useState(""); // "YYYY-MM-01"
   const [monthsCount, setMonthsCount] = useState(1);
   const [rows, setRows] = useState([]);
@@ -55,7 +56,7 @@ export default function ViewsTab(){
     })();
   }, []);
 
-  // When forecast changes, fetch available dates (we use a wide page_size to avoid extra endpoint)
+  // When forecast changes, fetch available dates (wide pull to infer months list)
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
@@ -69,11 +70,10 @@ export default function ViewsTab(){
         });
         const dates = Array.from(new Set((rows||[]).map(r => r?.date).filter(Boolean))).sort();
         setAllDates(dates);
-        // default start = first full month present (use first date's month)
         if (dates.length){
-          const d0 = new Date(dates[0]);
-          const start = firstOfMonth(d0);
-          setStartMonth(ymd(start));
+          const d0 = utcDateFromYmd(dates[0]);
+          const start = firstOfMonthUTC(d0);
+          setStartMonth(ymdUTC(start)); // "YYYY-MM-01"
         } else {
           setStartMonth("");
         }
@@ -85,7 +85,6 @@ export default function ViewsTab(){
   }, [forecastId]);
 
   const monthOptions = useMemo(() => {
-    // derive unique YYYY-MM from available dates
     const uniq = Array.from(new Set(allDates.map(s => s.slice(0,7)))).sort();
     return uniq.map(m => ({ value: m + "-01", label: m }));
   }, [allDates]);
@@ -95,15 +94,15 @@ export default function ViewsTab(){
       if (!forecastId || !startMonth) return;
       setStatus("Loading…"); setRows([]); setTotal(0);
 
-      const start = new Date(startMonth);
-      const end = lastOfMonth(addMonths(start, monthsCount - 1));
-      const histFrom = minusDays(firstOfMonth(start), 7);
+      const start = utcDateFromYmd(startMonth);                // "YYYY-MM-01"
+      const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount - 1));
+      const histFrom = minusDaysUTC(firstOfMonthUTC(start), 7);
 
       const payload = {
         scope:"global", model:"", series:"",
         forecast_id: forecastId,
-        date_from: ymd(histFrom),
-        date_to: ymd(end),
+        date_from: ymdUTC(histFrom),  // e.g., 2022-03-25
+        date_to: ymdUTC(end),         // e.g., 2022-04-30
         page: 1, page_size: 5000
       };
       const { rows, total } = await queryView(payload);
