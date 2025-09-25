@@ -1,6 +1,5 @@
 // src/tabs/DashboardTab.jsx
-// v1 — 4-up dashboard: ARIMA_M, HWES_M, SES_M (top row, no bands), full Targeted Seasonal Forecast (bottom)
-// NOTE: Derived 100% from ChartsTab.jsx (v13) logic and API usage.
+// 4 copies of SpecChart from ChartsTab.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -78,16 +77,7 @@ export default function DashboardTab(){
       const days = daysBetweenUTC(preRollStart, end);
       const strict = days.map(d => {
         const r = byDate.get(d) || {};
-        return {
-          date: d,
-          value: r.value ?? null,        // historical actuals (when present)
-          fv: r.fv ?? null,              // full-chart forecast (Targeted Seasonal Forecast)
-          low: r.low ?? null,
-          high: r.high ?? null,
-          arima_m: r.arima_m ?? null,    // model-specific forecasts (expected on tsf_vw_full)
-          hwes_m: r.hwes_m ?? null,
-          ses_m: r.ses_m ?? null
-        };
+        return { date: d, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
       });
       setRows(strict);
       setStatus("");
@@ -96,7 +86,7 @@ export default function DashboardTab(){
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Dashboard — 3 Model Lines + Full Forecast</h2>
+      <h2 style={{marginTop:0}}>Dashboard — 4 Charts</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
@@ -124,115 +114,20 @@ export default function DashboardTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
-      {/* Top row: three compact charts (ARIMA_M, HWES_M, SES_M) */}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <MiniModelChart title="ARIMA_M" rows={rows} field="arima_m" />
-        <MiniModelChart title="HWES_M"  rows={rows} field="hwes_m" />
-        <MiniModelChart title="SES_M"   rows={rows} field="ses_m" />
+        <SpecChart rows={rows} />
+        <SpecChart rows={rows} />
+        <SpecChart rows={rows} />
       </div>
 
-      {/* Bottom row: full-sized Targeted Seasonal Forecast chart (bands, legend, etc.) */}
       <div style={{marginTop:16}}>
-        <FullSpecChart rows={rows} />
+        <SpecChart rows={rows} />
       </div>
     </div>
   );
 }
 
-/** Compact chart that shows: historical (solid), actuals-for-comparison (dashed), and ONE forecast line from `field`. */
-function MiniModelChart({ title, rows, field }){
-  // Field fallback list: try multiple common column spellings
-  const fieldOrder = {
-    "arima_m": ["arima_m","arima_m_a0","arima","arima_a0","ARIMA_M","arimaM"],
-    "hwes_m":  ["hwes_m","hwes_m_a0","hwes","hwes_a0","HWES_M","hwesM","holt_winters_m"],
-    "ses_m":   ["ses_m","ses_m_a0","ses","ses_a0","SES_M","sesM"]
-  };
-  const fieldList = fieldOrder[field] || [field];
-  if (!rows || !rows.length) return (
-    <div style={{border:"1px solid #e5e7eb", borderRadius:10, padding:12}}>
-      <div style={{fontWeight:600, marginBottom:8}}>{title}</div>
-      <div className="muted" style={{height:320, display:"flex", alignItems:"center", justifyContent:"center"}}>No data</div>
-    </div>
-  );
-
-  const W = 520;       // compact width
-  const H = 320;
-  const pad = { top: 28, right: 16, bottom: 80, left: 64 };
-
-  const N = rows.length;
-  const startIdx = 7; // forecast begins after 7 pre-roll days
-
-  const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => [r.value, ...fieldList.map(f=>r[f])]).filter(v => v!=null).map(Number);
-  const yMin = yVals.length ? Math.min(...yVals) : 0;
-  const yMax = yVals.length ? Math.max(...yVals) : 1;
-  const yPad = (yMax - yMin) * 0.08 || 1;
-  const Y0 = yMin - yPad, Y1 = yMax + yPad;
-  const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
-
-  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
-
-  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const getFieldVal = (r) => {
-    for (const f of fieldList){ if (r[f] != null) return Number(r[f]); }
-    return null;
-  };
-  const modelPts = rows.map((r,i) => {
-    const v = getFieldVal(r);
-    return (v!=null && i >= startIdx) ? { i, y:v } : null;
-  }).filter(Boolean);
-
-  function niceTicks(min, max, count=5){
-    if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
-    const span = max - min;
-    const step = Math.pow(10, Math.floor(Math.log10(span / count)));
-    const err = (count * step) / span;
-    let m = 1;
-    if (err <= 0.15) m = 10;
-    else if (err <= 0.35) m = 5;
-    else if (err <= 0.75) m = 2;
-    const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
-    const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
-  }
-  const yTicks = niceTicks(Y0, Y1, 5);
-
-  return (
-    <div style={{border:"1px solid #e5e7eb", borderRadius:10, padding:12}}>
-      <div style={{fontWeight:600, marginBottom:8}}>{title}</div>
-      <svg width={W} height={H} style={{display:"block", width:"100%"}}>
-        <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
-        <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
-
-        {yTicks.map((v,i)=>(
-          <g key={i}>
-            <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
-            <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
-          </g>
-        ))}
-
-        {/* pre-roll (exact 7 days) */}
-        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-
-        {/* series */}
-        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
-        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-        <path d={path(modelPts)}      fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
-
-        {/* x ticks */}
-        {rows.map((r,i)=>(
-          <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
-            <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
-            <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
-          </g>
-        ))}
-      </svg>
-    </div>
-  );
-}
-
-/** Full chart with forecast interval and legend — identical to ChartsTab.jsx SpecChart */
-function FullSpecChart({ rows }){
+function SpecChart({ rows }){
   if (!rows || !rows.length) return null;
 
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
@@ -290,8 +185,6 @@ function FullSpecChart({ rows }){
 
       {/* pre-roll (exact 7 days) */}
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-      {/* fix small typo above */}
-      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)" style={{display:"none"}}/>
 
       {/* forecast interval polygon (light gold) */}
       {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
@@ -316,7 +209,7 @@ function FullSpecChart({ rows }){
   );
 }
 
-// Updated legend: same as ChartsTab.jsx
+// Updated legend: no Low/High entries; boxed over white background
 function Legend({ x, y }){
   const items = [
     { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
