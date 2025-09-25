@@ -1,7 +1,4 @@
 // src/tabs/DashboardTab.jsx
-// Clean build: ONE default export only (DashboardTab).
-// Uses a self-contained SpecChart identical in behavior to ChartsTab's chart.
-
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
@@ -14,35 +11,33 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-function SpecChart({ rows, hideInterval=false }){
+function SpecChart({ rows, lineField="fv", showInterval=true }){
   if (!rows || !rows.length) return null;
-
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
   const H = 560;
   const pad = { top: 32, right: 24, bottom: 120, left: 80 };
-
   const N = rows.length;
   const startIdx = 7;
 
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => hideInterval ? [r.value, r.fv] : [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
+  const yVals = rows.flatMap(r => showInterval ? [r.value, r.low, r.high, r[lineField]] : [r.value, r[lineField]]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
   const Y0 = yMin - yPad, Y1 = yMax + yPad;
   const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
-
   const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
 
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
-  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
-  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
+  const modelPts      = rows.map((r,i) => (r[lineField]!=null && i >= startIdx) ? { i, y:Number(r[lineField]) } : null).filter(Boolean);
 
-  const bandTop = rows.map((r,i) => (!hideInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
-  const bandBot = rows.map((r,i) => (!hideInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
-  const polyStr = (!hideInterval ? [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ") : "");
+  const lowPts  = rows.map((r,i) => (showInterval && r.low!=null  && i >= startIdx) ? { i, y:Number(r.low) }  : null).filter(Boolean);
+  const highPts = rows.map((r,i) => (showInterval && r.high!=null && i >= startIdx) ? { i, y:Number(r.high) } : null).filter(Boolean);
+
+  const bandTop = rows.map((r,i) => (showInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (showInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const polyStr = (showInterval ? [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ") : "");
 
   function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
@@ -70,20 +65,16 @@ function SpecChart({ rows, hideInterval=false }){
         </g>
       ))}
 
-      {/* pre-roll shading */}
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
-      {/* interval polygon (hidden when hideInterval) */}
-      {!hideInterval && polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
+      {showInterval && polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
 
-      {/* lines */}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
       <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-      <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
-      {!hideInterval && <path d={path(lowPts)}  fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
-      {!hideInterval && <path d={path(highPts)} fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
+      <path d={path(modelPts)}      fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+      {showInterval && <path d={path(lowPts)}  fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
+      {showInterval && <path d={path(highPts)} fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
 
-      {/* x ticks */}
       {rows.map((r,i)=>(
         <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
@@ -174,17 +165,6 @@ export default function DashboardTab(){
     } catch(e){ setStatus(String(e.message||e)); }
   }
 
-  const mapModel = (rows, field) => (rows||[]).map(r => ({
-    ...r,
-    fv: r[field] ?? null,
-    low: null,
-    high: null
-  }));
-
-  const rows_arima = mapModel(rows, "arima_m");
-  const rows_hwes  = mapModel(rows, "hwes_m");
-  const rows_ses   = mapModel(rows, "ses_m");
-
   return (
     <div style={{width:"100%"}}>
       <h2 style={{marginTop:0}}>Dashboard — ARIMA / HWES / SES + Full</h2>
@@ -216,13 +196,13 @@ export default function DashboardTab(){
       </div>
 
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rows_arima} hideInterval /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rows_hwes}  hideInterval /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rows_ses}   hideInterval /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rows} lineField="arima_m" showInterval={false} /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rows} lineField="hwes_m" showInterval={false} /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rows} lineField="ses_m" showInterval={false} /></div>
       </div>
 
       <div style={{marginTop:16}}>
-        <SpecChart rows={rows} />
+        <SpecChart rows={rows} lineField="fv" showInterval={true} />
       </div>
     </div>
   );
