@@ -1,3 +1,5 @@
+// App.jsx
+// Version: v2 (full-width layout + Charts tab)
 import React, { useState } from "react";
 import ConnectTab from "./tabs/ConnectTab.jsx";
 import ClassicalTab from "./tabs/ClassicalTab.jsx";
@@ -28,8 +30,6 @@ export default function App(){
           </div>
         ))}
       </div>
-
-      {/* Full-width content (no 'card' max-width) */}
       <div style={{width:"100%", boxSizing:"border-box"}}>
         {tab==="connect"   && <ConnectTab />}
         {tab==="classical" && <ClassicalTab />}
