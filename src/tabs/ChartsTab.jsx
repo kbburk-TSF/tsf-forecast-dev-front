@@ -1,19 +1,13 @@
 // ChartsTab.jsx
-// Version: v3 (polygon band, full-width, legend, strict spec)
+// Version: v4 — implements user spec exactly
+// - No polygon or forecast (fv) in the 7‑day historical pre-roll
+// - Polygon (low..high) begins on day 1 of forecast month
+// - High/Low: solid lines
+// - Actuals (value): solid in historical pre-roll, dotted in forecast period
+// - X axis: every date label, rotated 90°
+// - Y axis: nice tick grid + labels
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
-
-/**
- * Spec:
- * - X axis labels every date (MM/DD/YY)
- * - Shade (low..high) as a continuous pale-green polygon across the forecast window
- * - Plot low & high as lines
- * - Plot actuals (value) across entire range
- * - Plot forecast (fv) ONLY from forecast window (not in 7‑day historical pre-roll)
- * - Shade the 7‑day historical pre-roll
- * - Legend included
- * - Full-window-width SVG
- */
 
 function ymd(d){ return d.toISOString().slice(0,10); }
 function firstOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
@@ -75,7 +69,7 @@ export default function ChartsTab(){
         forecast_id: forecastId,
         date_from: ymd(histFrom),
         date_to: ymd(end),
-        page:1, page_size: 12000
+        page:1, page_size: 20000
       });
       const sorted = (res.rows||[]).slice().sort((a,b) => new Date(a.date) - new Date(b.date));
       setRows(sorted);
@@ -121,13 +115,31 @@ export default function ChartsTab(){
   );
 }
 
+// nice y ticks
+function niceTicks(min, max, count=6){
+  if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
+  const span = max - min;
+  const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+  const err = (count * step) / span;
+  let m = 1;
+  if (err <= 0.15) m = 10;
+  else if (err <= 0.35) m = 5;
+  else if (err <= 0.75) m = 2;
+  const niceStep = m * step;
+  const nmin = Math.floor(min / niceStep) * niceStep;
+  const nmax = Math.ceil(max / niceStep) * niceStep;
+  const ticks = [];
+  for (let v = nmin; v <= nmax + 1e-9; v += niceStep) ticks.push(v);
+  return ticks;
+}
+
 // Chart
 function Chart({ rows, startMonth }){ 
   if (!rows || !rows.length) return null;
 
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
-  const H = 500;
-  const pad = { top: 32, right: 24, bottom: 70, left: 64 };
+  const H = 560;
+  const pad = { top: 32, right: 24, bottom: 120, left: 80 };
 
   const dates = rows.map(r => new Date(r.date));
   const minX = new Date(Math.min(...dates));
@@ -146,23 +158,26 @@ function Chart({ rows, startMonth }){
     return pad.top + (H - pad.top - pad.bottom) * (1 - ( (v - Y0) / Math.max(1e-9, (Y1 - Y0)) ));
   }
 
-  const start = new Date(startMonth);
-  const histStart = new Date(start.getFullYear(), start.getMonth(), 1);
-  const histFrom = new Date(histStart); histFrom.setDate(histStart.getDate()-7);
-  const histTo = new Date(histStart); histTo.setDate(histStart.getDate()-1);
+  const forecastStart = new Date(startMonth);
+  const histFrom = new Date(forecastStart); histFrom.setDate(forecastStart.getDate()-7);
+  const histTo = new Date(forecastStart);   histTo.setDate(forecastStart.getDate()-1);
 
-  const ptsVal  = rows.filter(r => r.value!=null).map(r => ({ x:new Date(r.date), y:Number(r.value) }));
+  // Split actuals into historical (solid) and forecast-period (dotted) segments
+  const ptsValAll = rows.filter(r => r.value!=null).map(r => ({ x:new Date(r.date), y:Number(r.value) }));
+  const ptsValHist = ptsValAll.filter(p => p.x >= histFrom && p.x <= histTo);
+  const ptsValForecast = ptsValAll.filter(p => p.x >= forecastStart);
+
+  // Series
   const ptsLow  = rows.filter(r => r.low!=null).map(r => ({ x:new Date(r.date), y:Number(r.low) }));
   const ptsHigh = rows.filter(r => r.high!=null).map(r => ({ x:new Date(r.date), y:Number(r.high) }));
-  const ptsFv   = rows.filter(r => r.fv!=null && new Date(r.date) >= histStart).map(r => ({ x:new Date(r.date), y:Number(r.fv) }));
+  const ptsFv   = rows.filter(r => r.fv!=null && new Date(r.date) >= forecastStart).map(r => ({ x:new Date(r.date), y:Number(r.fv) }));
 
-  // Continuous polygon for band
-  const band = rows.filter(r => r.low!=null && r.high!=null).map(r => ({
-    x: new Date(r.date), y1: Number(r.low), y2: Number(r.high)
-  }));
-  const bandPtsTop = band.map(p => [xScale(p.x), yScale(p.y2)]);
-  const bandPtsBot = band.map(p => [xScale(p.x), yScale(p.y1)]).reverse();
-  const polyPts = bandPtsTop.concat(bandPtsBot);
+  // Polygon only in forecast period
+  const band = rows.filter(r => r.low!=null && r.high!=null && new Date(r.date) >= forecastStart)
+                   .map(r => ({ x:new Date(r.date), low:Number(r.low), high:Number(r.high) }));
+  const bandTop = band.map(p => [xScale(p.x), yScale(p.high)]);
+  const bandBot = band.map(p => [xScale(p.x), yScale(p.low)]).reverse();
+  const polyPts = bandTop.concat(bandBot);
   const polyStr = polyPts.map(p => p[0].toFixed(2)+","+p[1].toFixed(2)).join(" ");
 
   function path(points){
@@ -170,7 +185,9 @@ function Chart({ rows, startMonth }){
     return points.map((p,i) => (i?"L":"M")+xScale(p.x)+" "+yScale(p.y)).join(" ");
   }
 
+  // ticks
   const uniqueDays = rows.map(r => new Date(r.date)).sort((a,b)=>a-b);
+  const yTicks = niceTicks(Y0, Y1, 6);
 
   return (
     <svg width={W} height={H} style={{display:"block", width:"100%"}}>
@@ -178,27 +195,36 @@ function Chart({ rows, startMonth }){
       <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
       <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
 
-      {/* historical 7d mask */}
+      {/* y-axis ticks & labels */}
+      {yTicks.map((v,i) => (
+        <g key={i}>
+          <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
+          <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
+        </g>
+      ))}
+
+      {/* mask 7d historical */}
       <rect x={xScale(histFrom)} y={pad.top} width={Math.max(0, xScale(histTo)-xScale(histFrom))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
-      {/* interval polygon fill (pale green) */}
+      {/* polygon (forecast only) */}
       {polyPts.length>2 && <polygon points={polyStr} fill="rgba(0,180,0,0.18)" stroke="none" />}
 
-      {/* low/high lines */}
+      {/* low/high solid */}
       <path d={path(ptsLow)}  fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
-      <path d={path(ptsHigh)} fill="none" stroke="#2ca02c" strokeWidth={1.8} strokeDasharray="4,2"/>
+      <path d={path(ptsHigh)} fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
 
-      {/* forecast (fv) suppressed in historical block */}
+      {/* forecast fv (starts at forecastStart) */}
       <path d={path(ptsFv)} fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
 
-      {/* actuals */}
-      <path d={path(ptsVal)} fill="none" stroke="#333" strokeWidth={1.6}/>
+      {/* actuals: historical solid, forecast dotted */}
+      <path d={path(ptsValHist)} fill="none" stroke="#000" strokeWidth={1.8}/>
+      <path d={path(ptsValForecast)} fill="none" stroke="#000" strokeWidth={1.8} strokeDasharray="3,4"/>
 
-      {/* every-date x ticks */}
+      {/* every-date x ticks rotated 90deg */}
       {uniqueDays.map((d,i) => (
-        <g key={i}>
-          <line x1={xScale(d)} y1={H-pad.bottom} x2={xScale(d)} y2={H-pad.bottom+5} stroke="#aaa"/>
-          <text x={xScale(d)+2} y={H-pad.bottom+20} fontSize="11" fill="#666">{fmtMDY(d)}</text>
+        <g key={i} transform={`translate(${xScale(d)}, ${H-pad.bottom})`}>
+          <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
+          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(d)}</text>
         </g>
       ))}
 
@@ -210,12 +236,13 @@ function Chart({ rows, startMonth }){
 
 function Legend({ x, y }){ 
   const items = [
-    { type:"line", color:"#333",     label:"Actual (value)", width:1.6 },
-    { type:"line", color:"#1f77b4", label:"Forecast (fv)",   width:2.4 },
-    { type:"line", color:"#2ca02c", label:"Low (low)",       width:1.8 },
-    { type:"line", color:"#2ca02c", label:"High (high)",     width:1.8, dash:"4,2" },
-    { type:"fill", color:"rgba(0,180,0,0.18)", label:"Interval (low–high)" },
-    { type:"fill", color:"rgba(0,0,0,0.08)", label:"Historical mask (7d)" },
+    { type:"line", color:"#000",     label:"Actual (historical)", width:1.8, dash:null },
+    { type:"line", color:"#000",     label:"Actual (forecast)",   width:1.8, dash:"3,4" },
+    { type:"line", color:"#1f77b4",  label:"Forecast (fv)",       width:2.4, dash:null },
+    { type:"line", color:"#2ca02c",  label:"Low (low)",           width:1.8, dash:null },
+    { type:"line", color:"#2ca02c",  label:"High (high)",         width:1.8, dash:null },
+    { type:"fill", color:"rgba(0,180,0,0.18)", label:"Interval (low–high, forecast only)" },
+    { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical mask (7d)" },
   ];
   return (
     <g>
