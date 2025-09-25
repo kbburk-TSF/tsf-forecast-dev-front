@@ -3,22 +3,8 @@
 // Queries the PRE-BAKED VIEW "tsf_vw_daily_best_ses_a0" and ALWAYS passes forecast_id.
 
 import React, { useEffect, useMemo, useState } from "react";
-// --- local API bindings (auto-injected) ---
-const __ORIGIN = (typeof window !== 'undefined' && (window.API_BASE || window.BACKEND_BASE)) ? (window.API_BASE || window.BACKEND_BASE) : "";
-const __BASE = `${__ORIGIN}/ses`;
-async function listForecastIds() {
-  const r = await fetch(`${__BASE}/ids`, { credentials: 'include' });
-  if (!r.ok) throw new Error(`Failed to load IDs: ${r.status}`);
-  return r.json();
-}
-async function queryView(params) {
-  const qs = new URLSearchParams(params || {}).toString();
-  const url = qs ? `${__BASE}/query?${qs}` : `${__BASE}/query`;
-  const r = await fetch(url, { credentials: 'include' });
-  if (!r.ok) throw new Error(`Query failed: ${r.status}`);
-  return r.json();
-}
-// --- end injected ---
+import { listForecastIds, queryView } from "../api.js";
+
 
 const MS_DAY = 86400000;
 function parseYMD(s){ return new Date(s + "T00:00:00Z"); }
