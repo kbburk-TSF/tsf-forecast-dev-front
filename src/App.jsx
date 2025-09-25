@@ -8,7 +8,7 @@ import ChartsTab from "./tabs/ChartsTab.jsx";
 import ArimaChartTab from "./tabs/ArimaChartTab.jsx";
 import HwesChartTab from "./tabs/HwesChartTab.jsx";
 import SesChartTab from "./tabs/SesChartTab.jsx";
-import FourChartsTab from "./tabs/FourChartsTab.jsx";
+import DashboardTab from "./tabs/DashboardTab.jsx";
 
 const TABS = [
   { key:"connect",   label:"Connect" },
@@ -19,11 +19,11 @@ const TABS = [
   { key:"arima",     label:"ARIMA Chart" },
   { key:"hwes",      label:"HWES Chart" },
   { key:"ses",       label:"SES Chart" },
-  { key:"four",      label:"4-Chart Display" },
+  { key:"dashboard", label:"Dashboard" },
 ];
 
 export default function App(){
-  const [tab, setTab] = useState("four");
+  const [tab, setTab] = useState("dashboard");
   return (
     <div style={{padding:"12px 16px", width:"100vw"}}>
       <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
@@ -44,7 +44,7 @@ export default function App(){
       {tab==="arima"     && <ArimaChartTab />}
       {tab==="hwes"      && <HwesChartTab />}
       {tab==="ses"       && <SesChartTab />}
-      {tab==="four"      && <FourChartsTab />}
+      {tab==="dashboard" && <DashboardTab />}
     </div>
   );
 }
