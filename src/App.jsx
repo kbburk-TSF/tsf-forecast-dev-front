@@ -5,13 +5,19 @@ import ClassicalTab from "./tabs/ClassicalTab.jsx";
 import UploadTab from "./tabs/UploadTab.jsx";
 import ViewsTab from "./tabs/ViewsTab.jsx";
 import ChartsTab from "./tabs/ChartsTab.jsx";
+import ArimaChartTab from "./tabs/ArimaChartTab.jsx";
+import HwesChartTab from "./tabs/HwesChartTab.jsx";
+import SesChartTab from "./tabs/SesChartTab.jsx";
 
 const TABS = [
   { key:"connect",   label:"Connect" },
   { key:"classical", label:"Classical Export" },
   { key:"upload",    label:"Upload Historical" },
   { key:"views",     label:"Views" },
-  { key:"charts",    label:"Charts" }
+  { key:"charts",    label:"Charts" },
+  { key:"arima",     label:"ARIMA Chart" },
+  { key:"hwes",      label:"HWES Chart" },
+  { key:"ses",       label:"SES Chart" }
 ];
 
 export default function App(){
@@ -33,6 +39,9 @@ export default function App(){
       {tab==="upload"    && <UploadTab />}
       {tab==="views"     && <ViewsTab />}
       {tab==="charts"    && <ChartsTab />}
+      {tab==="arima"     && <ArimaChartTab />}
+      {tab==="hwes"      && <HwesChartTab />}
+      {tab==="ses"       && <SesChartTab />}
     </div>
   );
 }
