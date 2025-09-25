@@ -1,5 +1,5 @@
+// src/App.jsx — minimal patch for full-width + Charts tab
 import React, { useState } from "react";
-import { API_BASE } from "./env.js";
 import ConnectTab from "./tabs/ConnectTab.jsx";
 import ClassicalTab from "./tabs/ClassicalTab.jsx";
 import UploadTab from "./tabs/UploadTab.jsx";
@@ -7,26 +7,24 @@ import ViewsTab from "./tabs/ViewsTab.jsx";
 import ChartsTab from "./tabs/ChartsTab.jsx";
 
 const TABS = [
-  { key:"connect",  label:"Connect" },
+  { key:"connect",   label:"Connect" },
   { key:"classical", label:"Classical Export" },
-  { key:"upload",   label:"Upload Historical" },
-  { key:"views",    label:"Views" },
-  { key:"charts",   label:"Charts" }
+  { key:"upload",    label:"Upload Historical" },
+  { key:"views",     label:"Views" },
+  { key:"charts",    label:"Charts" }
 ];
 
 export default function App(){
-  const [tab, setTab] = useState("views");
+  const [tab, setTab] = useState("charts");
+
   return (
-    <div className="container">
-      <h1 style={{margin:"0 0 8px"}}>TSF — Frontend <span className="badge">env/scrape + upload + views</span></h1>
-      <div className="muted" style={{marginBottom:12}}>Backend: <span className="mono">{API_BASE || "(same origin)"}</span></div>
-      <div className="tabs">
+    <div style={{padding:"12px 16px", width:"100vw"}}>
+      <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
         {TABS.map(t => (
-          <div
-            key={t.key}
-            className={"tab " + (t.key === tab ? "active" : "")}
-            onClick={() => setTab(t.key)}
-          >
+          <div key={t.key}
+               onClick={() => setTab(t.key)}
+               style={{padding:"8px 12px", border:"1px solid #dfe3ea", borderRadius:8, cursor:"pointer",
+                       background: tab===t.key ? "#111" : "#f6f8fb", color: tab===t.key ? "#fff" : "#111"}}>
             {t.label}
           </div>
         ))}
@@ -36,7 +34,7 @@ export default function App(){
         {tab==="classical" && <ClassicalTab />}
         {tab==="upload"    && <UploadTab />}
         {tab==="views"     && <ViewsTab />}
-        {tab==="charts"   && <ChartsTab />}
+        {tab==="charts"    && <ChartsTab />}
       </div>
     </div>
   );
