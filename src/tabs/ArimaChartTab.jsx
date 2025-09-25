@@ -3,7 +3,21 @@
 // Queries the PRE-BAKED VIEW "tsf_vw_daily_best_arima_a0" and ALWAYS passes forecast_id.
 
 import React, { useEffect, useMemo, useState } from "react";
-import { listForecastIds, queryView } from "../api.js";
+// --- local API bindings (auto-injected) ---
+const __BASE = "/arima";
+async function listForecastIds() {
+  const r = await fetch(`${__BASE}/ids`);
+  if (!r.ok) throw new Error(`Failed to load IDs: ${r.status}`);
+  return r.json();
+}
+async function queryView(params) {
+  const qs = new URLSearchParams(params || {}).toString();
+  const url = qs ? `${__BASE}/query?${qs}` : `${__BASE}/query`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`Query failed: ${r.status}`);
+  return r.json();
+}
+// --- end injected ---
 
 const MS_DAY = 86400000;
 function parseYMD(s){ return new Date(s + "T00:00:00Z"); }
