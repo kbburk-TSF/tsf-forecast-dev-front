@@ -1,10 +1,6 @@
 // src/tabs/DashboardTab.jsx
-// 4 copies of SpecChart from ChartsTab.jsx
-// Top row shows historical + actuals + a single forecast series each:
-//   Chart 1 -> arima_m as fv (no interval)
-//   Chart 2 -> hwes_m  as fv (no interval)
-//   Chart 3 -> ses_m   as fv (no interval)
-// Bottom chart -> unchanged (uses fv/low/high from the view)
+// Clean build: ONE default export only (DashboardTab).
+// Uses a self-contained SpecChart identical in behavior to ChartsTab's chart.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -17,6 +13,86 @@ function lastOfMonthUTC(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUT
 function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+n, d.getUTCDate())); }
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
+
+function SpecChart({ rows, hideInterval=false }){
+  if (!rows || !rows.length) return null;
+
+  const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
+  const H = 560;
+  const pad = { top: 32, right: 24, bottom: 120, left: 80 };
+
+  const N = rows.length;
+  const startIdx = 7;
+
+  const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
+  const yVals = rows.flatMap(r => hideInterval ? [r.value, r.fv] : [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
+  const yMin = yVals.length ? Math.min(...yVals) : 0;
+  const yMax = yVals.length ? Math.max(...yVals) : 1;
+  const yPad = (yMax - yMin) * 0.08 || 1;
+  const Y0 = yMin - yPad, Y1 = yMax + yPad;
+  const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
+
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
+
+  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
+
+  const bandTop = rows.map((r,i) => (!hideInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (!hideInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const polyStr = (!hideInterval ? [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ") : "");
+
+  function niceTicks(min, max, count=6){
+    if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
+    const span = max - min;
+    const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    const err = (count * step) / span;
+    let m = 1;
+    if (err <= 0.15) m = 10;
+    else if (err <= 0.35) m = 5;
+    else if (err <= 0.75) m = 2;
+    const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
+    const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
+  }
+  const yTicks = niceTicks(Y0, Y1, 6);
+
+  return (
+    <svg width={W} height={H} style={{display:"block", width:"100%"}}>
+      <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
+      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
+
+      {yTicks.map((v,i)=>(
+        <g key={i}>
+          <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
+          <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
+        </g>
+      ))}
+
+      {/* pre-roll shading */}
+      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
+
+      {/* interval polygon (hidden when hideInterval) */}
+      {!hideInterval && polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
+
+      {/* lines */}
+      <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+      <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
+      <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+      {!hideInterval && <path d={path(lowPts)}  fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
+      {!hideInterval && <path d={path(highPts)} fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
+
+      {/* x ticks */}
+      {rows.map((r,i)=>(
+        <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
+          <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
+          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
 
 export default function DashboardTab(){
   const [ids, setIds] = useState([]);
@@ -88,10 +164,9 @@ export default function DashboardTab(){
           fv: r.fv ?? null,
           low: r.low ?? null,
           high: r.high ?? null,
-          // additional model-specific columns if present
           arima_m: r.arima_m ?? null,
-          hwes_m:  r.hwes_m  ?? null,
-          ses_m:   r.ses_m   ?? null,
+          hwes_m:  r.hwes_m ?? null,
+          ses_m:   r.ses_m ?? null
         };
       });
       setRows(strict);
@@ -99,24 +174,20 @@ export default function DashboardTab(){
     } catch(e){ setStatus(String(e.message||e)); }
   }
 
-  // project rows to use a specific forecast column as `fv` and hide the interval
-  function projectRowsFor(modelKey){
-    return rows.map(r => ({
-      date: r.date,
-      value: r.value ?? null,
-      fv: (r && modelKey in r) ? (r[modelKey] ?? null) : null,
-      low: null,   // hide interval per instructions
-      high: null,  // hide interval per instructions
-    }));
-  }
+  const mapModel = (rows, field) => (rows||[]).map(r => ({
+    ...r,
+    fv: r[field] ?? null,
+    low: null,
+    high: null
+  }));
 
-  const rowsArima = useMemo(() => projectRowsFor("arima_m"), [rows]);
-  const rowsHwes  = useMemo(() => projectRowsFor("hwes_m"),  [rows]);
-  const rowsSes   = useMemo(() => projectRowsFor("ses_m"),   [rows]);
+  const rows_arima = mapModel(rows, "arima_m");
+  const rows_hwes  = mapModel(rows, "hwes_m");
+  const rows_ses   = mapModel(rows, "ses_m");
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Dashboard — 4 Charts</h2>
+      <h2 style={{marginTop:0}}>Dashboard — ARIMA / HWES / SES + Full</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
@@ -144,128 +215,15 @@ export default function DashboardTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
-      {/* Top row: ARIMA_M, HWES_M, SES_M as fv; NO changes to chart type */}
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <SpecChart rows={rowsArima} />
-        <SpecChart rows={rowsHwes} />
-        <SpecChart rows={rowsSes} />
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rows_arima} hideInterval /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rows_hwes}  hideInterval /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rows_ses}   hideInterval /></div>
       </div>
 
-      {/* Bottom chart: unchanged — uses fv/low/high from the view */}
       <div style={{marginTop:16}}>
         <SpecChart rows={rows} />
       </div>
     </div>
-  );
-}
-
-function SpecChart({ rows }){
-  if (!rows || !rows.length) return null;
-
-  const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
-  const H = 560;
-  const pad = { top: 32, right: 24, bottom: 120, left: 80 };
-
-  const N = rows.length;           // 7 pre-roll + month days
-  const startIdx = 7;              // forecast begins after 7 pre-roll days
-
-  const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
-  const yMin = yVals.length ? Math.min(...yVals) : 0;
-  const yMax = yVals.length ? Math.max(...yVals) : 1;
-  const yPad = (yMax - yMin) * 0.08 || 1;
-  const Y0 = yMin - yPad, Y1 = yMax + yPad;
-  const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
-
-  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
-
-  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
-  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
-  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
-
-  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
-  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
-  const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
-
-  function niceTicks(min, max, count=6){
-    if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
-    const span = max - min;
-    const step = Math.pow(10, Math.floor(Math.log10(span / count)));
-    const err = (count * step) / span;
-    let m = 1;
-    if (err <= 0.15) m = 10;
-    else if (err <= 0.35) m = 5;
-    else if (err <= 0.75) m = 2;
-    const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
-    const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
-  }
-  const yTicks = niceTicks(Y0, Y1, 6);
-
-  return (
-    <svg width={W} height={H} style={{display:"block", width:"100%"}}>
-      <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
-      <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
-
-      {yTicks.map((v,i)=>(
-        <g key={i}>
-          <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
-          <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
-        </g>
-      ))}
-
-      {/* pre-roll (exact 7 days) */}
-      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-
-      {/* forecast interval polygon (light gold) */}
-      {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
-
-      {/* series */}
-      <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
-      <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-      <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
-      <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
-      <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
-
-      {/* x ticks */}
-      {rows.map((r,i)=>(
-        <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
-          <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
-          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
-        </g>
-      ))}
-
-      <Legend x={pad.left+10} y={pad.top+10} />
-    </svg>
-  );
-}
-
-// Updated legend: no Low/High entries; boxed over white background
-function Legend({ x, y }){
-  const items = [
-    { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
-    { type:"line", color:"#000",     label:"Actuals (for comparison)", width:2.4, dash:"4,6" },
-    { type:"line", color:"#1f77b4",  label:"Targeted Seasonal Forecast", width:2.4, dash:null },
-    { type:"fill", color:"rgba(255,215,0,0.22)", label:"Forecast Interval" },
-    { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical" },
-  ];
-  const rowH = 18;
-  const padBox = 10;
-  const boxW = 280;
-  const boxH = padBox*2 + items.length*rowH;
-  return (
-    <g>
-      <rect x={x-12} y={y-16} width={boxW} height={boxH} fill="#fff" stroke="#ddd" />
-      {items.map((it,i)=>(
-        <g key={i} transform={`translate(${x}, ${y + i*rowH})`}>
-          {it.type==="line"
-            ? <line x1={0} y1={0} x2={24} y2={0} stroke={it.color} strokeWidth={it.width} strokeDasharray={it.dash||"0"} />
-            : <rect x={0} y={-7} width={24} height={14} fill={it.color} />
-          }
-          <text x={30} y={4} fontSize="12" fill="#333">{it.label}</text>
-        </g>
-      ))}
-    </g>
   );
 }
