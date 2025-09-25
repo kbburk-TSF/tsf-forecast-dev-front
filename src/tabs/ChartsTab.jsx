@@ -182,7 +182,7 @@ function SpecChart({ rows }){
 
       {/* series */}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
-      <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={1.8} strokeDasharray="3,4"/>
+      <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
       <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
       <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
       <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
@@ -204,8 +204,8 @@ function SpecChart({ rows }){
 function Legend({ x, y }){
   const items = [
     { type:"line", color:"#000",     label:"Historical Values", width:1.8, dash:null },
-    { type:"line", color:"#000",     label:"Actuals (for comparison)", width:1.8, dash:"3,4" },
-    { type:"line", color:"#1f77b4",  label:"Forecast (fv)", width:2.4, dash:null },
+    { type:"line", color:"#000",     label:"Actuals (for comparison)", width:2.4, dash:"4,6" },
+    { type:"line", color:"#1f77b4",  label:"Targeted Seasonal Forecast", width:2.4, dash:null },
     { type:"fill", color:"rgba(255,215,0,0.22)", label:"Forecast Interval" },
     { type:"fill", color:"rgba(0,0,0,0.08)",  label:"Historical" },
   ];
