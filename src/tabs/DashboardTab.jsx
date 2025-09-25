@@ -1,7 +1,11 @@
 // src/tabs/DashboardTab.jsx
+// Top row: remap fv to arima_m/hwes_m/ses_m and null out low/high, then pass to SpecChart.
+// Bottom row: pass rows unchanged.
+
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
+// ==== helpers ====
 const MS_DAY = 86400000;
 function parseYMD(s){ return new Date(s + "T00:00:00Z"); }
 function ymd(d){ return d.toISOString().slice(0,10); }
@@ -11,70 +15,55 @@ function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getU
 function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
 function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
-function SpecChart({ rows, lineField="fv", showInterval=true }){
+// ==== SpecChart (expects fv/low/high) ====
+function SpecChart({ rows }){
   if (!rows || !rows.length) return null;
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
   const H = 560;
   const pad = { top: 32, right: 24, bottom: 120, left: 80 };
-  const N = rows.length;
-  const startIdx = 7;
-
+  const N = rows.length, startIdx = 7;
   const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
-  const yVals = rows.flatMap(r => showInterval ? [r.value, r.low, r.high, r[lineField]] : [r.value, r[lineField]]).filter(v => v!=null).map(Number);
+  const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
   const yPad = (yMax - yMin) * 0.08 || 1;
   const Y0 = yMin - yPad, Y1 = yMax + yPad;
   const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
   const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
-
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const modelPts      = rows.map((r,i) => (r[lineField]!=null && i >= startIdx) ? { i, y:Number(r[lineField]) } : null).filter(Boolean);
-
-  const lowPts  = rows.map((r,i) => (showInterval && r.low!=null  && i >= startIdx) ? { i, y:Number(r.low) }  : null).filter(Boolean);
-  const highPts = rows.map((r,i) => (showInterval && r.high!=null && i >= startIdx) ? { i, y:Number(r.high) } : null).filter(Boolean);
-
-  const bandTop = rows.map((r,i) => (showInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
-  const bandBot = rows.map((r,i) => (showInterval && r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
-  const polyStr = (showInterval ? [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ") : "");
-
+  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
+  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
   function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
-    const span = max - min;
-    const step = Math.pow(10, Math.floor(Math.log10(span / count)));
-    const err = (count * step) / span;
-    let m = 1;
-    if (err <= 0.15) m = 10;
-    else if (err <= 0.35) m = 5;
-    else if (err <= 0.75) m = 2;
+    const span = max - min; const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    const err = (count * step) / span; let m = 1;
+    if (err <= 0.15) m = 10; else if (err <= 0.35) m = 5; else if (err <= 0.75) m = 2;
     const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
     const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
   }
   const yTicks = niceTicks(Y0, Y1, 6);
-
   return (
     <svg width={W} height={H} style={{display:"block", width:"100%"}}>
       <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
       <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
-
       {yTicks.map((v,i)=>(
         <g key={i}>
           <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
           <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
         </g>
       ))}
-
       <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-
-      {showInterval && polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
-
+      {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
       <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-      <path d={path(modelPts)}      fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
-      {showInterval && <path d={path(lowPts)}  fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
-      {showInterval && <path d={path(highPts)} fill="none" stroke="#2ca02c" strokeWidth={1.8}/>}
-
+      <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+      <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+      <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
       {rows.map((r,i)=>(
         <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
@@ -165,6 +154,11 @@ export default function DashboardTab(){
     } catch(e){ setStatus(String(e.message||e)); }
   }
 
+  const mapTo = (rows, field) => (rows||[]).map(r => ({ ...r, fv: r[field] ?? null, low: null, high: null }));
+  const rowsARIMA = mapTo(rows, "arima_m");
+  const rowsHWES  = mapTo(rows, "hwes_m");
+  const rowsSES   = mapTo(rows, "ses_m");
+
   return (
     <div style={{width:"100%"}}>
       <h2 style={{marginTop:0}}>Dashboard — ARIMA / HWES / SES + Full</h2>
@@ -196,13 +190,13 @@ export default function DashboardTab(){
       </div>
 
       <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rows} lineField="arima_m" showInterval={false} /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rows} lineField="hwes_m" showInterval={false} /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rows} lineField="ses_m" showInterval={false} /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rowsARIMA} /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rowsHWES} /></div>
+        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rowsSES} /></div>
       </div>
 
       <div style={{marginTop:16}}>
-        <SpecChart rows={rows} lineField="fv" showInterval={true} />
+        <SpecChart rows={rows} />
       </div>
     </div>
   );
