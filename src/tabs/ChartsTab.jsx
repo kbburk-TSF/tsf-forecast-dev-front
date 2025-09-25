@@ -1,24 +1,17 @@
 // src/tabs/ChartsTab.jsx
-// v10 — FROM SCRATCH. No guesses. Strict windowing and UTC dates. Exactly 7-day pre-roll, forecast area starts on selected month-01.
+// v11 — index-based x scale (no date math in plotting). Exact 7-day pre-roll; forecast begins at index 7.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { listForecastIds, queryView } from "../api.js";
 
-// ----- Date helpers (UTC, no timezone drift) -----
 const MS_DAY = 86400000;
 function parseYMD(s){ return new Date(s + "T00:00:00Z"); }
 function ymd(d){ return d.toISOString().slice(0,10); }
 function firstOfMonthUTC(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)); }
 function lastOfMonthUTC(d){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+1, 0)); }
 function addMonthsUTC(d, n){ return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()+n, d.getUTCDate())); }
-function fmtMDY(d){ const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
-
-// Build full day list between two UTC dates (inclusive)
-function daysBetweenUTC(a,b){
-  const out=[]; let t=a.getTime();
-  while (t<=b.getTime()+1e-3){ out.push(new Date(t)); t+=MS_DAY; }
-  return out;
-}
+function fmtMDY(s){ const d=parseYMD(s); const mm=d.getUTCMonth()+1, dd=d.getUTCDate(), yy=String(d.getUTCFullYear()).slice(-2); return `${mm}/${dd}/${yy}`; }
+function daysBetweenUTC(a,b){ const out=[]; let t=a.getTime(); while (t<=b.getTime()+1e-3){ out.push(ymd(new Date(t))); t+=MS_DAY; } return out; }
 
 export default function ChartsTab(){
   const [ids, setIds] = useState([]);
@@ -29,7 +22,6 @@ export default function ChartsTab(){
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("");
 
-  // Load forecast list
   useEffect(() => {
     (async () => {
       try {
@@ -44,7 +36,6 @@ export default function ChartsTab(){
     })();
   }, []);
 
-  // Discover available months for selected forecast
   useEffect(() => {
     if (!forecastId) return;
     (async () => {
@@ -66,12 +57,10 @@ export default function ChartsTab(){
     if (!forecastId || !startMonth) return;
     try{
       setStatus("Loading…");
-
-      const start = firstOfMonthUTC(parseYMD(startMonth));      // selected YYYY-MM-01 UTC
+      const start = firstOfMonthUTC(parseYMD(startMonth));
       const preRollStart = new Date(start.getTime() - 7*MS_DAY);
       const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
 
-      // Query ONLY the window we will render
       const res = await queryView({
         scope:"global", model:"", series:"",
         forecast_id: forecastId,
@@ -80,21 +69,16 @@ export default function ChartsTab(){
         page:1, page_size: 20000
       });
 
-      // Index rows by date (UTC)
       const byDate = new Map();
       for (const r of (res.rows||[])){
         if (!r || !r.date) continue;
-        byDate.set(ymd(parseYMD(r.date)), r);
+        byDate.set(r.date, r);
       }
-
-      // Build continuous day rows strictly within [preRollStart, end]
       const days = daysBetweenUTC(preRollStart, end);
       const strict = days.map(d => {
-        const k = ymd(d);
-        const r = byDate.get(k) || {};
-        return { date: k, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
+        const r = byDate.get(d) || {};
+        return { date: d, value: r.value ?? null, fv: r.fv ?? null, low: r.low ?? null, high: r.high ?? null };
       });
-
       setRows(strict);
       setStatus("");
     } catch(e){ setStatus(String(e.message||e)); }
@@ -129,31 +113,23 @@ export default function ChartsTab(){
         </div>
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
-      <SpecChart rows={rows} startMonth={startMonth} monthsCount={monthsCount} />
+      <SpecChart rows={rows} />
     </div>
   );
 }
 
-// ----- Pure, deterministic chart -----
-function SpecChart({ rows, startMonth, monthsCount }){
+function SpecChart({ rows }){
   if (!rows || !rows.length) return null;
 
   const W = Math.max(1400, (typeof window!=="undefined" ? window.innerWidth - 32 : 1400));
   const H = 560;
   const pad = { top: 32, right: 24, bottom: 120, left: 80 };
 
-  const start = firstOfMonthUTC(parseYMD(startMonth));
-  const preRollStart = new Date(start.getTime() - 7*MS_DAY);
-  const preRollEnd = new Date(start.getTime() - MS_DAY);
-  const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
+  const N = rows.length;           // total days = 7 pre-roll + month days
+  const startIdx = 7;              // forecast begins after 7 pre-roll days
+  const endIdx = N - 1;
 
-  const minX = preRollStart;
-  const maxX = end;
-
-  const xScale = d => {
-    const t0=minX.getTime(), t1=maxX.getTime(), t=parseYMD(d).getTime();
-    return pad.left + (t - t0) * (W - pad.left - pad.right) / Math.max(1, (t1 - t0));
-  };
+  const xScale = (i) => pad.left + (i) * (W - pad.left - pad.right) / Math.max(1, (N-1));
   const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
@@ -161,37 +137,19 @@ function SpecChart({ rows, startMonth, monthsCount }){
   const Y0 = yMin - yPad, Y1 = yMax + yPad;
   const yScale = v => pad.top + (H - pad.top - pad.bottom) * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
 
-  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.x)+" "+yScale(p.y)).join(" ") : "";
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
 
-  // Build series by rule (date-driven, not data-driven)
-  const histActualPts = rows
-    .filter(r => r.value!=null && parseYMD(r.date) <= preRollEnd)
-    .map(r => ({ x:r.date, y:Number(r.value) }));
+  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
 
-  const futActualPts = rows
-    .filter(r => r.value!=null && parseYMD(r.date) >= start)
-    .map(r => ({ x:r.date, y:Number(r.value) }));
-
-  const fvPts = rows
-    .filter(r => r.fv!=null && parseYMD(r.date) >= start)
-    .map(r => ({ x:r.date, y:Number(r.fv) }));
-
-  const lowPts = rows
-    .filter(r => r.low!=null && parseYMD(r.date) >= start)
-    .map(r => ({ x:r.date, y:Number(r.low) }));
-
-  const highPts = rows
-    .filter(r => r.high!=null && parseYMD(r.date) >= start)
-    .map(r => ({ x:r.date, y:Number(r.high) }));
-
-  const band = rows
-    .filter(r => r.low!=null && r.high!=null && parseYMD(r.date) >= start)
-    .map(r => ({ x:r.date, low:Number(r.low), high:Number(r.high) }));
-  const bandTop = band.map(p => [xScale(p.x), yScale(p.high)]);
-  const bandBot = band.slice().reverse().map(p => [xScale(p.x), yScale(p.low)]);
+  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
   const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
 
-  // Y ticks
+  // y ticks
   function niceTicks(min, max, count=6){
     if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
     const span = max - min;
@@ -208,11 +166,9 @@ function SpecChart({ rows, startMonth, monthsCount }){
 
   return (
     <svg width={W} height={H} style={{display:"block", width:"100%"}}>
-      {/* axes */}
       <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
       <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
 
-      {/* y grid */}
       {yTicks.map((v,i)=>(
         <g key={i}>
           <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
@@ -220,15 +176,11 @@ function SpecChart({ rows, startMonth, monthsCount }){
         </g>
       ))}
 
-      {/* pre-roll (exact 7 days) */}
-      {(() => {
-        const xF = xScale(ymd(start));
-        const xPR = xScale(ymd(preRollStart));
-        return <rect x={xPR} y={pad.top} width={Math.max(0, xF-xPR)} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>;
-      })()}
+      {/* exact 7-day pre-roll */}
+      <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(startIdx)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
 
-      {/* forecast interval polygon */}
-      {band.length>1 && <polygon points={polyStr} fill="rgba(0,180,0,0.18)" stroke="none" />}
+      {/* polygon */}
+      {polyStr && <polygon points={polyStr} fill="rgba(0,180,0,0.18)" stroke="none" />}
 
       {/* series */}
       <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
@@ -237,11 +189,11 @@ function SpecChart({ rows, startMonth, monthsCount }){
       <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
       <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
 
-      {/* x ticks for each day in our strict window */}
+      {/* x ticks: show every date label rotated */}
       {rows.map((r,i)=>(
-        <g key={i} transform={`translate(${xScale(r.date)}, ${H-pad.bottom})`}>
+        <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
           <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
-          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(parseYMD(r.date))}</text>
+          <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
         </g>
       ))}
 
