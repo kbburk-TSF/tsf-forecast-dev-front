@@ -1,11 +1,27 @@
 // src/App.jsx
 import React, { useState } from "react";
-import FourChartsTab from "./tabs/FourChartsTab.jsx";
+import ConnectTab from "./tabs/ConnectTab.jsx";
+import ClassicalTab from "./tabs/ClassicalTab.jsx";
+import UploadTab from "./tabs/UploadTab.jsx";
+import ViewsTab from "./tabs/ViewsTab.jsx";
+import ChartsTab from "./tabs/ChartsTab.jsx";
+import ArimaChartTab from "./tabs/ArimaChartTab.jsx";
+import HwesChartTab from "./tabs/HwesChartTab.jsx";
+import SesChartTab from "./tabs/SesChartTab.jsx";
 
-const TABS = [{ key:"four", label:"4-Chart Display" }];
+const TABS = [
+  { key:"connect",   label:"Connect" },
+  { key:"classical", label:"Classical Export" },
+  { key:"upload",    label:"Upload Historical" },
+  { key:"views",     label:"Views" },
+  { key:"charts",    label:"Charts" },
+  { key:"arima",     label:"ARIMA Chart" },
+  { key:"hwes",      label:"HWES Chart" },
+  { key:"ses",       label:"SES Chart" }
+];
 
 export default function App(){
-  const [tab, setTab] = useState("four");
+  const [tab, setTab] = useState("charts");
   return (
     <div style={{padding:"12px 16px", width:"100vw"}}>
       <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
@@ -18,7 +34,14 @@ export default function App(){
           </button>
         ))}
       </div>
-      {tab==="four" && <FourChartsTab />}
+      {tab==="connect"   && <ConnectTab />}
+      {tab==="classical" && <ClassicalTab />}
+      {tab==="upload"    && <UploadTab />}
+      {tab==="views"     && <ViewsTab />}
+      {tab==="charts"    && <ChartsTab />}
+      {tab==="arima"     && <ArimaChartTab />}
+      {tab==="hwes"      && <HwesChartTab />}
+      {tab==="ses"       && <SesChartTab />}
     </div>
   );
 }
