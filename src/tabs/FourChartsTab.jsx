@@ -2,13 +2,14 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 /**
- * Four independent charts. Single selector bar.
- * Selectors are populated EXCLUSIVELY from the FULL table via `/views` routes:
- *  - Forecast Name dropdown from GET /views/ids
- *  - Start Month dropdown from POST /views/query (for the selected forecast_id)
- *
- * No joins or assumptions. Exact dates plotted as returned by APIs.
+ * Fix: /views endpoints REQUIRE query/body fields (scope, model, series).
+ * We use scope="global", model="", series="" exactly as backend expects.
+ * All selector options (forecast_name and months) come from the FULL table only.
  */
+
+const VIEWS_SCOPE = "global";
+const VIEWS_MODEL = "";
+const VIEWS_SERIES = "";
 
 // ---------- helpers
 function fmtDate(d) {
@@ -31,34 +32,40 @@ function minusDaysISO(iso, days) {
   dt.setUTCDate(dt.getUTCDate() - days);
   return fmtDate(dt);
 }
-async function getIds(route) {
-  const res = await fetch(`${route}/ids`);
-  if (!res.ok) throw new Error(`Failed ids for ${route}`);
+async function getViewsIds(scope, model, series, limit=1000) {
+  const q = new URLSearchParams({ scope, model, series, limit: String(limit) });
+  const res = await fetch(`/views/ids?${q.toString()}`);
+  if (!res.ok) throw new Error(`Failed /views/ids ${res.status}`);
+  return res.json(); // [{id,name}]
+}
+async function postViewsQuery(body) {
+  const res = await fetch(`/views/query`, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error(`Failed /views/query ${res.status}`);
   return res.json();
 }
 async function postQuery(route, body) {
   const res = await fetch(`${route}/query`, {
     method: "POST",
-    headers: {"Content-Type": "application/json"},
+    headers: {"Content-Type":"application/json"},
     body: JSON.stringify(body)
   });
-  if (!res.ok) throw new Error(`Query failed for ${route}`);
+  if (!res.ok) throw new Error(`Failed ${route}/query ${res.status}`);
   return res.json();
 }
-
 function uniq(arr){ return [...new Set(arr)]; }
-function toYYYYMM(iso){
-  if (!iso) return null;
-  return String(iso).slice(0,7);
-}
+function toYYYYMM(iso){ return iso ? String(iso).slice(0,7) : null; }
 
-// Minimal SVG chart (same as v1 except selectors differ)
+// ---------- chart
 function LineChart({ data, width=520, height=220, prerollDays=7, monthStartISO }){
   const padding = { top: 10, right: 12, bottom: 80, left: 48 };
   const innerW = width - padding.left - padding.right;
   const innerH = height - padding.top - padding.bottom;
 
-  const dates = useMemo(() => {
+  const dates = React.useMemo(() => {
     const arr = [...new Set(data.map(r => r.date))].sort();
     return arr;
   }, [data]);
@@ -132,8 +139,8 @@ export default function FourChartsTab(){
   const [forecastName, setForecastName] = useState("");
   const [forecastId, setForecastId] = useState(null);
 
-  const [months, setMonths] = useState([]);        // computed from /views/query for selected id
-  const [month, setMonth] = useState("");          // YYYY-MM
+  const [months, setMonths] = useState([]);        // derived from /views/query for selected id
+  const [month, setMonth] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
@@ -147,8 +154,8 @@ export default function FourChartsTab(){
   useEffect(() => {
     (async () => {
       try{
-        const list = await getIds("/views"); // expect [{forecast_id, forecast_name}, ...]
-        setNames(list.map(x => ({id: x.forecast_id, name: x.forecast_name})));
+        const list = await getViewsIds(VIEWS_SCOPE, VIEWS_MODEL, VIEWS_SERIES, 2000); // [{id,name}]
+        setNames(list.map(x => ({id: String(x.id), name: x.name})));
       }catch(e){
         console.error(e);
         setErr(String(e.message || e));
@@ -156,7 +163,7 @@ export default function FourChartsTab(){
     })();
   }, []);
 
-  // When forecastName changes, resolve id (from the same /views ids list) and load available months
+  // When forecastName changes, resolve id and load available months from FULL
   useEffect(() => {
     (async () => {
       setErr("");
@@ -166,15 +173,16 @@ export default function FourChartsTab(){
 
       if (!forecastName) return;
       try{
-        // resolve id
-        const list = await getIds("/views");
-        const item = list.find(x => x.forecast_name === forecastName);
-        const id = item ? item.forecast_id : null;
+        const list = await getViewsIds(VIEWS_SCOPE, VIEWS_MODEL, VIEWS_SERIES, 2000);
+        const item = list.find(x => x.name === forecastName);
+        const id = item ? String(item.id) : null;
         setForecastId(id);
 
         if (id){
-          // fetch all rows for this id from FULL table and compute months present
-          const rows = await postQuery("/views", { forecast_id: id });
+          const rows = await postViewsQuery({
+            scope: VIEWS_SCOPE, model: VIEWS_MODEL, series: VIEWS_SERIES,
+            forecast_id: id, page_size: 10000
+          });
           const ym = uniq(rows.map(r => toYYYYMM(r.date || r.dt || r.day || r.ds)).filter(Boolean)).sort();
           setMonths(ym);
           if (ym.length) setMonth(ym[0]);
@@ -195,13 +203,17 @@ export default function FourChartsTab(){
     setErr("");
     setLoading(true);
     try{
-      const body = { forecast_id: forecastId, date_from: dateFrom, date_to: dateTo };
+      const fullBody = {
+        scope: VIEWS_SCOPE, model: VIEWS_MODEL, series: VIEWS_SERIES,
+        forecast_id: forecastId, date_from: dateFrom, date_to: dateTo, page_size: 10000
+      };
+      const shortBody = { forecast_id: forecastId, date_from: dateFrom, date_to: dateTo, page_size: 10000 };
 
       const [arima, hwes, ses, full] = await Promise.all([
-        postQuery("/arima", body),
-        postQuery("/hwes",  body),
-        postQuery("/ses",   body),
-        postQuery("/views", body),
+        postQuery("/arima", shortBody),
+        postQuery("/hwes",  shortBody),
+        postQuery("/ses",   shortBody),
+        postViewsQuery(fullBody),
       ]);
 
       const mapRows = (rows) => rows.map(r => ({
