@@ -30,7 +30,7 @@ export default function HwesChartTab(){
   useEffect(() => {
     (async () => {
       try {
-        const list = await listForecastIds({ scope:"global" });
+        const list = await listForecastIds({ scope:"global", view: VIEW });
         const norm = (Array.isArray(list) ? list : []).map(x => (
           typeof x === "string" ? { id:x, name:x }
           : { id:String(x.id ?? x.value ?? x), name:String(x.name ?? x.label ?? x.id ?? x) }
