@@ -6,7 +6,9 @@
 // - SpecChart now measures its container width with ResizeObserver and renders to that width.
 //   This ensures each top-row chart shows the *entire* forecast horizontally inside a 3-col grid.
 // - Reduced chart height for the top-row use case (more compact).
-// - No changes to chart types or data logic.
+// - Calls/payload keys EXACTLY match backend /views routes (scope, model, series, forecast_id, date_from, date_to).
+// - Column names use UPPERCASE to match quoted identifiers in views.py ("ARIMA_M","HWES_M","SES_M").
+// - No changes to chart types or other logic.
 
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -128,6 +130,7 @@ export default function DashboardTab(){
   useEffect(() => {
     (async () => {
       try {
+        // EXACTLY matches /views/ids params (scope, model, series)
         const list = await listForecastIds({ scope:"global", model:"", series:"" });
         const norm = (Array.isArray(list) ? list : []).map(x => (
           typeof x === "string" ? { id:x, name:x }
@@ -144,6 +147,7 @@ export default function DashboardTab(){
     (async () => {
       try {
         setStatus("Scanning dates…");
+        // EXACTLY matches /views/query body field names
         const res = await queryView({ scope:"global", model:"", series:"", forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
         const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
         const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
@@ -164,9 +168,10 @@ export default function DashboardTab(){
       const preRollStart = new Date(start.getTime() - 7*MS_DAY);
       const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
 
+      // EXACT payload keys (scope, model, series, forecast_id, date_from, date_to, page, page_size)
       const res = await queryView({
         scope:"global", model:"", series:"",
-        forecast_id: forecastId,
+        forecast_id: String(forecastId),
         date_from: ymd(preRollStart),
         date_to: ymd(end),
         page:1, page_size: 20000
@@ -186,6 +191,7 @@ export default function DashboardTab(){
           fv: r.fv ?? null,
           low: r.low ?? null,
           high: r.high ?? null,
+          // UPPERCASE to match quoted identifiers from backend
           ARIMA_M: r.ARIMA_M ?? null,
           HWES_M:  r.HWES_M ?? null,
           SES_M:   r.SES_M ?? null
