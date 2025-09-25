@@ -1,4 +1,4 @@
-// src/App.jsx — minimal patch for full-width + Charts tab
+// src/App.jsx
 import React, { useState } from "react";
 import ConnectTab from "./tabs/ConnectTab.jsx";
 import ClassicalTab from "./tabs/ClassicalTab.jsx";
@@ -16,26 +16,23 @@ const TABS = [
 
 export default function App(){
   const [tab, setTab] = useState("charts");
-
   return (
     <div style={{padding:"12px 16px", width:"100vw"}}>
       <div style={{display:"flex", gap:8, marginBottom:12, flexWrap:"wrap"}}>
         {TABS.map(t => (
-          <div key={t.key}
-               onClick={() => setTab(t.key)}
-               style={{padding:"8px 12px", border:"1px solid #dfe3ea", borderRadius:8, cursor:"pointer",
-                       background: tab===t.key ? "#111" : "#f6f8fb", color: tab===t.key ? "#fff" : "#111"}}>
+          <button key={t.key}
+            onClick={() => setTab(t.key)}
+            style={{padding:"8px 12px", border:"1px solid #dfe3ea", borderRadius:8, cursor:"pointer",
+                    background: tab===t.key ? "#111" : "#f6f8fb", color: tab===t.key ? "#fff" : "#111"}}>
             {t.label}
-          </div>
+          </button>
         ))}
       </div>
-      <div className="card" style={{maxWidth:"none", width:"100%"}}>
-        {tab==="connect"   && <ConnectTab />}
-        {tab==="classical" && <ClassicalTab />}
-        {tab==="upload"    && <UploadTab />}
-        {tab==="views"     && <ViewsTab />}
-        {tab==="charts"    && <ChartsTab />}
-      </div>
+      {tab==="connect"   && <ConnectTab />}
+      {tab==="classical" && <ClassicalTab />}
+      {tab==="upload"    && <UploadTab />}
+      {tab==="views"     && <ViewsTab />}
+      {tab==="charts"    && <ChartsTab />}
     </div>
   );
 }
