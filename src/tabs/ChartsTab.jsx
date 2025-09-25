@@ -135,6 +135,7 @@ function SpecChart({ rows, startMonth, monthsCount }){
   const histFrom = new Date(firstOfMonth(forecastStart)); histFrom.setDate(histFrom.getDate()-7);
   const end = lastOfMonth(addMonths(new Date(startMonth), monthsCount - 1));
   const histTo = new Date(forecastStart); histTo.setDate(forecastStart.getDate()-1);
+  const MS_DAY = 24*60*60*1000;
 
   // 1) Normalize and drop rows with no data at all
   const anyData = r => r && r.date && (r.value!=null || r.fv!=null || r.low!=null || r.high!=null);
@@ -197,8 +198,8 @@ function SpecChart({ rows, startMonth, monthsCount }){
         </g>
       ))}
 
-      {/* historical mask (7d pre-roll only) */}
-      <rect x={xScale(histFrom)} y={pad.top} width={Math.max(0, xScale(histTo)-xScale(histFrom))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
+      {/* historical mask (exact 7d pre-roll) computed in pixels to avoid any date parsing/zone quirks */}
+      {(() => { const span = Math.max(1, (maxX.getTime()-minX.getTime())); const pxPerMs = (W - pad.left - pad.right) / span; const xF = xScale(forecastStart); const w = pxPerMs * (7*MS_DAY); const x = Math.max(pad.left, xF - w); return (<rect x={x} y={pad.top} width={Math.max(0, xF - x)} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>); })()}
 
       {/* polygon (forecast window only) */}
       {polyPts.length>2 && <polygon points={polyStr} fill="rgba(0,180,0,0.18)" stroke="none" />}
