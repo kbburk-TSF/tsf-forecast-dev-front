@@ -24,14 +24,14 @@ export default function ArimaChartTab() {
 
   return (
     <div>
-      <h2 style={marginTop:0}>Arima Forecast Chart</h2>
+      <h2 style={{ marginTop: 0 }}>Arima Forecast Chart</h2>
       <div className="muted">{status || `${rows.length} rows`}</div>
-      <div style={width:"100%", height:"70vh"}>
+      <div style={{width:"100%", height:"70vh"}}>
         <ResponsiveContainer>
           <LineChart data={rows}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="date" tick={fontSize:12} />
-            <YAxis tick={fontSize:12} />
+            <XAxis dataKey="date" tick={{fontSize:12}} />
+            <YAxis tick={{fontSize:12}} />
             <Tooltip />
             <Legend />
             <Line type="monotone" dataKey="value" stroke="#888" dot={false} name="Historical Values" />
