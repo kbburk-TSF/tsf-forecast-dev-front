@@ -492,7 +492,7 @@ export default function DashboardTab(){
         <h2 style={{margin:"6px 0 10px"}}>Classical Forecasts (ARIMA, SES, HWES)</h2>
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
-
+      </div>
       {/* 2) Gold line only (with actuals) */}
       <div className="chart-wrap" style={{marginTop:24, paddingLeft:32, paddingRight:32}}>
         <div className="chart-wrap" style={{marginTop:24, paddingLeft:32, paddingRight:32}}>
