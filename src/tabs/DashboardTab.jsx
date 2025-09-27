@@ -486,19 +486,19 @@ export default function DashboardTab(){
       </div>
 
       {/* 1) Unchanged top chart */}
-      <div style={{marginTop:16}}>
+      <div style={{marginTop:16, padding:"0 24px"}}>
         <h2 style={{margin:"6px 0 10px"}}>Classical Forecasts (ARIMA, SES, HWES)</h2>
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
       {/* 2) Gold line only (with actuals) */}
-      <div style={{marginTop:24}}>
+      <div style={{marginTop:24, padding:"0 24px"}}>
         <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Gold Line)</h2>
         <GoldChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
       {/* 3) Green zone only (with actuals) */}
-      <div style={{marginTop:24}}>
+      <div style={{marginTop:24, padding:"0 24px"}}>
         <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Green Zone)</h2>
         <GreenZoneChart rows={rows} yDomain={sharedYDomain} />
       </div>
