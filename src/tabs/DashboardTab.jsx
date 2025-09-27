@@ -1,10 +1,13 @@
 // src/tabs/DashboardTab.jsx
-// CHANGES (2025-09-26, update 3):
-// - Legends are BOXED, CENTERED, and HORIZONTAL below each chart with a 2pt border.
-// - Titles promoted to <h2> for both charts.
-// - Shared Y-axis retained (based on Targeted Seasonal extents).
-// - Color/label adjustments retained (ARIMA red, SES blue, HWES purple; FV gold #FFD700; green interval).
-// Git bump: 2025-09-27 03:34:18
+// CHANGES (2025-09-27, update 6):
+// - Three charts stacked & consistent sizing:
+//   1) Classical Forecasts (ARIMA, SES, HWES) — unchanged
+//   2) Targeted Seasonal Forecast (Gold Line) — historical actuals + gold TSF line
+//   3) Targeted Seasonal Forecast (Green Zone) — historical actuals + low/high + green polygon
+// - Bottom legend excludes 'High' and 'Low' entries (interval only).
+// - Shared Y-axis domain across all three charts.
+// - Shorter chart height + tighter bottom padding.
+// Git bump: 2025-09-27 12:10:00
 
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -43,7 +46,7 @@ function useContainerWidth(){
 // Shared chart math
 function useChartMath(rows){
   const [wrapRef, W] = useContainerWidth();
-  const H = Math.max(300, Math.min(420, Math.round(W * 0.28))); // responsive height
+  const H = Math.max(220, Math.min(340, Math.round(W * 0.22))); // shorter responsive height
   const pad = { top: 28, right: 24, bottom: 72, left: 70 };
   const N = (rows||[]).length;
   const startIdx = 7; // preroll days
@@ -104,7 +107,7 @@ function InlineLegend({ items }){
   );
 }
 
-// ==== Single forecast chart (fv/low/high) ====
+// ==== Single forecast chart (fv/low/high) — base ====
 function SpecChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
@@ -159,6 +162,128 @@ function SpecChart({ rows, yDomain }){
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
         <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
+        <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+        <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+        {rows.map((r,i)=>(
+          <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
+            <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
+            <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
+          </g>
+        ))}
+      </svg>
+      <InlineLegend items={legendItems} />
+    </div>
+  );
+}
+
+// ==== GOLD ONLY: historical actuals + gold TSF line ====
+function GoldChart({ rows, yDomain }){
+  if (!rows || !rows.length) return null;
+  const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
+
+  let Y0, Y1;
+  if (yDomain && Number.isFinite(yDomain[0]) && Number.isFinite(yDomain[1])){
+    [Y0, Y1] = yDomain;
+  } else {
+    const yVals = rows.flatMap(r => [r.value, r.fv]).filter(v => v!=null).map(Number);
+    const yMin = yVals.length ? Math.min(...yVals) : 0;
+    const yMax = yVals.length ? Math.max(...yVals) : 1;
+    const yPad = (yMax - yMin) * 0.08 || 1;
+    Y0 = yMin - yPad; Y1 = yMax + yPad;
+  }
+  const yScale = v => pad.top + innerH * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
+
+  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const yTicks = niceTicks(Y0, Y1, 6);
+  const fvColor = "#FFD700";
+
+  const legendItems = [
+    { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
+    { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
+    { label: "Targeted Seasonal Forecast", type: "line", stroke:fvColor, dash:null, width:2.4 },
+  ];
+
+  return (
+    <div ref={wrapRef} style={{ width: "100%" }}>
+      <svg width={W} height={H} style={{ display:"block", width:"100%" }}>
+        <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
+        <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
+        {yTicks.map((v,i)=>(
+          <g key={i}>
+            <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
+            <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
+          </g>
+        ))}
+        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
+        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
+        <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
+        {rows.map((r,i)=>(
+          <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
+            <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
+            <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
+          </g>
+        ))}
+      </svg>
+      <InlineLegend items={legendItems} />
+    </div>
+  );
+}
+
+// ==== GREEN ZONE: historical actuals + low/high lines + polygon ====
+function GreenZoneChart({ rows, yDomain }){
+  if (!rows || !rows.length) return null;
+  const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
+
+  let Y0, Y1;
+  if (yDomain && Number.isFinite(yDomain[0]) && Number.isFinite(yDomain[1])){
+    [Y0, Y1] = yDomain;
+  } else {
+    const yVals = rows.flatMap(r => [r.value, r.low, r.high]).filter(v => v!=null).map(Number);
+    const yMin = yVals.length ? Math.min(...yVals) : 0;
+    const yMax = yVals.length ? Math.max(...yVals) : 1;
+    const yPad = (yMax - yMin) * 0.08 || 1;
+    Y0 = yMin - yPad; Y1 = yMax + yPad;
+  }
+  const yScale = v => pad.top + innerH * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
+
+  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
+
+  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+  const yTicks = niceTicks(Y0, Y1, 6);
+
+  const intervalFill = "rgba(144,238,144,0.22)";
+
+  const legendItems = [
+    { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
+    { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
+    { label: "Green Zone Forecast Interval", type: "box", fill:intervalFill, stroke:"#2ca02c" },
+  ];
+
+  return (
+    <div ref={wrapRef} style={{ width: "100%" }}>
+      <svg width={W} height={H} style={{ display:"block", width:"100%" }}>
+        <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
+        <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
+        {yTicks.map((v,i)=>(
+          <g key={i}>
+            <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
+            <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
+          </g>
+        ))}
+        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
+        {polyStr && <polygon points={polyStr} fill={intervalFill} stroke="none" />}
+        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         {rows.map((r,i)=>(
@@ -312,8 +437,8 @@ export default function DashboardTab(){
           low: r.low ?? null,
           high: r.high ?? null,
           ARIMA_M: r.ARIMA_M ?? null,
-          HWES_M:  r.HWES_M ?? null,
-          SES_M:   r.SES_M ?? null
+          HWES_M:  r.HWES_M  ?? null,
+          SES_M:   r.SES_M   ?? null
         };
       });
       setRows(strict);
@@ -360,14 +485,22 @@ export default function DashboardTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
+      {/* 1) Unchanged top chart */}
       <div style={{marginTop:16}}>
         <h2 style={{margin:"6px 0 10px"}}>Classical Forecasts (ARIMA, SES, HWES)</h2>
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
+      {/* 2) Gold line only (with actuals) */}
       <div style={{marginTop:24}}>
-        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast</h2>
-        <SpecChart rows={rows} yDomain={sharedYDomain} />
+        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Gold Line)</h2>
+        <GoldChart rows={rows} yDomain={sharedYDomain} />
+      </div>
+
+      {/* 3) Green zone only (with actuals) */}
+      <div style={{marginTop:24}}>
+        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Green Zone)</h2>
+        <GreenZoneChart rows={rows} yDomain={sharedYDomain} />
       </div>
     </div>
   );
