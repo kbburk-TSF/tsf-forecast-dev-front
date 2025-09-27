@@ -1,3 +1,4 @@
+// Version bump for Git recognition: 2025-09-27 03:27:25
 // src/tabs/DashboardTab.jsx
 // CHANGES (2025-09-26, update 2):
 // - Legends: text changed per request; moved below charts in a single line (horizontal), outside SVG.
