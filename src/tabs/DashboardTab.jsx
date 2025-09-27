@@ -1,11 +1,12 @@
 // src/tabs/DashboardTab.jsx
-// CHANGES (2025-09-27, update 4):
-// - Added three-chart layout:
+// CHANGES (2025-09-27, update 5):
+// - Three charts stacked:
 //   1) Classical Forecasts (unchanged)
-//   2) Targeted Seasonal Forecast (Gold Line): historical values + gold TSF forecast only
-//   3) Targeted Seasonal Forecast (Green Zone): historical values + low/high lines + green polygon
-// - Legends remain boxed/centered/horizontal and shared Y-axis domain is applied to all charts.
-// Git bump: 2025-09-27 11:46:00
+//   2) Targeted Seasonal Forecast (Gold Line) — shows historical actuals + gold TSF line
+//   3) Targeted Seasonal Forecast (Green Zone) — shows historical actuals + low/high lines + green polygon
+// - Legends boxed/centered; bottom legend removes 'High' and 'Low' entries per instruction.
+// - Shared Y-axis across all charts.
+// Git bump: 2025-09-27 12:00:00
 
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -83,18 +84,14 @@ function InlineLegend({ items }){
           if (it.type === "line"){
             return (
               <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
-                <svg width={46} height={12}>
-                  <line x1={4} y1={6} x2={42} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/>
-                </svg>
+                <svg width={46} height={12}><line x1={4} y1={6} x2={42} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/></svg>
                 <span style={{fontSize:12}}>{it.label}</span>
               </div>
             );
           } else {
             return (
               <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
-                <svg width={46} height={12}>
-                  <rect x={4} y={1} width={38} height={10} fill={it.fill} stroke={it.stroke||"#2ca02c"}/>
-                </svg>
+                <svg width={46} height={12}><rect x={4} y={1} width={38} height={10} fill={it.fill} stroke={it.stroke||"#2ca02c"}/></svg>
                 <span style={{fontSize:12}}>{it.label}</span>
               </div>
             );
@@ -105,7 +102,7 @@ function InlineLegend({ items }){
   );
 }
 
-// ==== Single forecast chart (fv/low/high) — original spec (used as base) ====
+// ==== Single forecast chart (fv/low/high) — base ====
 function SpecChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
@@ -174,7 +171,7 @@ function SpecChart({ rows, yDomain }){
   );
 }
 
-// ==== GOLD ONLY: historical values + gold TSF line (no dashed actuals, no low/high/band) ====
+// ==== GOLD ONLY: historical actuals + gold TSF line ====
 function GoldChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
@@ -193,12 +190,14 @@ function GoldChart({ rows, yDomain }){
   const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
 
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
   const yTicks = niceTicks(Y0, Y1, 6);
   const fvColor = "#FFD700";
 
   const legendItems = [
     { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
+    { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
     { label: "Targeted Seasonal Forecast", type: "line", stroke:fvColor, dash:null, width:2.4 },
   ];
 
@@ -215,6 +214,7 @@ function GoldChart({ rows, yDomain }){
         ))}
         <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
         {rows.map((r,i)=>(
           <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
@@ -228,7 +228,7 @@ function GoldChart({ rows, yDomain }){
   );
 }
 
-// ==== GREEN ZONE: historical + low/high lines + polygon (no gold line, no dashed actuals) ====
+// ==== GREEN ZONE: historical actuals + low/high lines + polygon ====
 function GreenZoneChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
@@ -247,6 +247,7 @@ function GreenZoneChart({ rows, yDomain }){
   const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
 
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
   const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
 
@@ -259,9 +260,8 @@ function GreenZoneChart({ rows, yDomain }){
 
   const legendItems = [
     { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
+    { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
     { label: "Green Zone Forecast Interval", type: "box", fill:intervalFill, stroke:"#2ca02c" },
-    { label: "High", type: "line", stroke:"#2ca02c", dash:null, width:1.8 },
-    { label: "Low",  type: "line", stroke:"#2ca02c", dash:null, width:1.8 },
   ];
 
   return (
@@ -278,6 +278,7 @@ function GreenZoneChart({ rows, yDomain }){
         <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
         {polyStr && <polygon points={polyStr} fill={intervalFill} stroke="none" />}
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         {rows.map((r,i)=>(
@@ -292,7 +293,7 @@ function GreenZoneChart({ rows, yDomain }){
   );
 }
 
-// ==== Multi-series classical chart ====/
+// ==== Multi-series classical chart ====
 function MultiClassicalChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
@@ -485,13 +486,13 @@ export default function DashboardTab(){
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
-      {/* 2) Gold line only */}
+      {/* 2) Gold line only (with actuals) */}
       <div style={{marginTop:24}}>
         <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Gold Line)</h2>
         <GoldChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
-      {/* 3) Green zone only */}
+      {/* 3) Green zone only (with actuals) */}
       <div style={{marginTop:24}}>
         <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Green Zone)</h2>
         <GreenZoneChart rows={rows} yDomain={sharedYDomain} />
