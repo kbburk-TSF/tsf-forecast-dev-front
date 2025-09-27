@@ -1,11 +1,10 @@
-// Version bump for Git recognition: 2025-09-27 03:27:25
 // src/tabs/DashboardTab.jsx
-// CHANGES (2025-09-26, update 2):
-// Git bump: 2025-09-27 03:30:03
-// - Legends: text changed per request; moved below charts in a single line (horizontal), outside SVG.
-// - Bottom legend entries: "Targeted Seasonal Forecast" & "Green Zone Forecast Interval".
-// - FV line color tweaked to more yellow (#FFD700).
-// - Y-axis synced: both charts use the SAME [Y0,Y1] computed from the Targeted Seasonal Forecast extents (value, low, high, fv).
+// CHANGES (2025-09-26, update 3):
+// - Legends are BOXED, CENTERED, and HORIZONTAL below each chart with a 2pt border.
+// - Titles promoted to <h2> for both charts.
+// - Shared Y-axis retained (based on Targeted Seasonal extents).
+// - Color/label adjustments retained (ARIMA red, SES blue, HWES purple; FV gold #FFD700; green interval).
+// Git bump: 2025-09-27 03:34:18
 
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -35,7 +34,6 @@ function useContainerWidth(){
       }
     });
     ro.observe(el);
-    // initialize once
     setW(el.clientWidth || 0);
     return () => ro.disconnect();
   }, []);
@@ -45,10 +43,10 @@ function useContainerWidth(){
 // Shared chart math
 function useChartMath(rows){
   const [wrapRef, W] = useContainerWidth();
-  const H = Math.max(300, Math.min(420, Math.round(W * 0.28))); // responsive height, full-width
+  const H = Math.max(300, Math.min(420, Math.round(W * 0.28))); // responsive height
   const pad = { top: 28, right: 24, bottom: 96, left: 70 };
   const N = (rows||[]).length;
-  const startIdx = 7; // preroll shading split
+  const startIdx = 7; // preroll days
 
   const innerW = Math.max(1, W - pad.left - pad.right);
   const innerH = Math.max(1, H - pad.top - pad.bottom);
@@ -65,43 +63,52 @@ function useChartMath(rows){
   return { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks };
 }
 
-// Legend component (horizontal, below chart)
+// Legend component — boxed, centered, horizontal
 function InlineLegend({ items }){
   if (!items || !items.length) return null;
   return (
-    <div style={{display:"flex", flexWrap:"wrap", gap:"16px", alignItems:"center", marginTop:8}}>
-      {items.map((it,idx)=>{
-        if (it.type === "line"){
-          return (
-            <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
-              <svg width={46} height={12}>
-                <line x1={4} y1={6} x2={42} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/>
-              </svg>
-              <span style={{fontSize:12}}>{it.label}</span>
-            </div>
-          );
-        } else {
-          return (
-            <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
-              <svg width={46} height={12}>
-                <rect x={4} y={1} width={38} height={10} fill={it.fill} stroke={it.stroke||"#aaa"}/>
-              </svg>
-              <span style={{fontSize:12}}>{it.label}</span>
-            </div>
-          );
-        }
-      })}
+    <div style={{display:"flex", justifyContent:"center", marginTop:12}}>
+      <div style={{
+        display:"inline-flex",
+        flexWrap:"wrap",
+        gap:"16px",
+        alignItems:"center",
+        padding:"12px 16px",
+        border:"2pt solid #333",
+        borderRadius:8,
+        background:"#fff"
+      }}>
+        {items.map((it,idx)=>{
+          if (it.type === "line"){
+            return (
+              <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
+                <svg width={46} height={12}>
+                  <line x1={4} y1={6} x2={42} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/>
+                </svg>
+                <span style={{fontSize:12}}>{it.label}</span>
+              </div>
+            );
+          } else {
+            return (
+              <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
+                <svg width={46} height={12}>
+                  <rect x={4} y={1} width={38} height={10} fill={it.fill} stroke={it.stroke||"#2ca02c"}/>
+                </svg>
+                <span style={{fontSize:12}}>{it.label}</span>
+              </div>
+            );
+          }
+        })}
+      </div>
     </div>
   );
 }
 
-// ==== Single forecast chart (with fv/low/high) ====
+// ==== Single forecast chart (fv/low/high) ====
 function SpecChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
-
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
 
-  // y extents (use provided yDomain if present)
   let Y0, Y1;
   if (yDomain && Number.isFinite(yDomain[0]) && Number.isFinite(yDomain[1])){
     [Y0, Y1] = yDomain;
@@ -126,11 +133,9 @@ function SpecChart({ rows, yDomain }){
   const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
   const yTicks = niceTicks(Y0, Y1, 6);
 
-  // Colors per new request
-  const intervalFill = "rgba(144,238,144,0.22)"; // light green
-  const fvColor = "#FFD700"; // more-yellow gold
+  const intervalFill = "rgba(144,238,144,0.22)";
+  const fvColor = "#FFD700";
 
-  // Legend items (updated labels)
   const legendItems = [
     { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
     { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
@@ -141,7 +146,6 @@ function SpecChart({ rows, yDomain }){
   return (
     <div ref={wrapRef} style={{ width: "100%" }}>
       <svg width={W} height={H} style={{ display:"block", width:"100%" }}>
-        {/* axes */}
         <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
         <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
         {yTicks.map((v,i)=>(
@@ -150,17 +154,13 @@ function SpecChart({ rows, yDomain }){
             <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
           </g>
         ))}
-        {/* preroll shading */}
         <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-        {/* interval polygon */}
         {polyStr && <polygon points={polyStr} fill={intervalFill} stroke="none" />}
-        {/* series */}
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
         <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
         <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
-        {/* x ticks */}
         {rows.map((r,i)=>(
           <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
             <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
@@ -168,19 +168,16 @@ function SpecChart({ rows, yDomain }){
           </g>
         ))}
       </svg>
-      {/* legend below, inline */}
       <InlineLegend items={legendItems} />
     </div>
   );
 }
 
-// ==== Multi-series chart for classical forecasts ====
+// ==== Multi-series classical chart ====
 function MultiClassicalChart({ rows, yDomain }){
   if (!rows || !rows.length) return null;
-
   const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
 
-  // y extents (use shared domain to match bottom chart)
   let Y0, Y1;
   if (yDomain && Number.isFinite(yDomain[0]) && Number.isFinite(yDomain[1])){
     [Y0, Y1] = yDomain;
@@ -196,7 +193,6 @@ function MultiClassicalChart({ rows, yDomain }){
 
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-
   const makePts = (field) => rows.map((r,i) => (r[field]!=null && i >= startIdx) ? { i, y:Number(r[field]) } : null).filter(Boolean);
   const arimaPts = makePts("ARIMA_M");
   const sesPts   = makePts("SES_M");
@@ -204,12 +200,10 @@ function MultiClassicalChart({ rows, yDomain }){
 
   const yTicks = niceTicks(Y0, Y1, 6);
 
-  // Colors per request
-  const C_ARIMA = "#d62728"; // red
-  const C_SES   = "#1f77b4"; // blue
-  const C_HWES  = "#9467bd"; // purple
+  const C_ARIMA = "#d62728";
+  const C_SES   = "#1f77b4";
+  const C_HWES  = "#9467bd";
 
-  // Legend items (updated labels)
   const legendItems = [
     { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
     { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
@@ -221,7 +215,6 @@ function MultiClassicalChart({ rows, yDomain }){
   return (
     <div ref={wrapRef} style={{ width: "100%" }}>
       <svg width={W} height={H} style={{ display:"block", width:"100%" }}>
-        {/* axes */}
         <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
         <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
         {yTicks.map((v,i)=>(
@@ -230,15 +223,12 @@ function MultiClassicalChart({ rows, yDomain }){
             <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
           </g>
         ))}
-        {/* preroll shading */}
         <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-        {/* series */}
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
         <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(arimaPts)}      fill="none" stroke={C_ARIMA} strokeWidth={2.4}/>
         <path d={path(sesPts)}        fill="none" stroke={C_SES}   strokeWidth={2.4}/>
         <path d={path(hwesPts)}       fill="none" stroke={C_HWES}  strokeWidth={2.4}/>
-        {/* x ticks */}
         {rows.map((r,i)=>(
           <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
             <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
@@ -246,7 +236,6 @@ function MultiClassicalChart({ rows, yDomain }){
           </g>
         ))}
       </svg>
-      {/* legend below, inline */}
       <InlineLegend items={legendItems} />
     </div>
   );
@@ -264,7 +253,6 @@ export default function DashboardTab(){
   useEffect(() => {
     (async () => {
       try {
-        // EXACTLY matches /views/ids params (scope, model, series)
         const list = await listForecastIds({ scope:"global", model:"", series:"" });
         const norm = (Array.isArray(list) ? list : []).map(x => (
           typeof x === "string" ? { id:x, name:x }
@@ -281,7 +269,6 @@ export default function DashboardTab(){
     (async () => {
       try {
         setStatus("Scanning dates…");
-        // EXACTLY matches /views/query body field names
         const res = await queryView({ scope:"global", model:"", series:"", forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
         const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
         const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
@@ -302,7 +289,6 @@ export default function DashboardTab(){
       const preRollStart = new Date(start.getTime() - 7*MS_DAY);
       const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
 
-      // EXACT payload keys (scope, model, series, forecast_id, date_from, date_to, page, page_size)
       const res = await queryView({
         scope:"global", model:"", series:"",
         forecast_id: String(forecastId),
@@ -325,7 +311,6 @@ export default function DashboardTab(){
           fv: r.fv ?? null,
           low: r.low ?? null,
           high: r.high ?? null,
-          // UPPERCASE to match quoted identifiers from backend
           ARIMA_M: r.ARIMA_M ?? null,
           HWES_M:  r.HWES_M ?? null,
           SES_M:   r.SES_M ?? null
@@ -336,7 +321,6 @@ export default function DashboardTab(){
     } catch(e){ setStatus(String(e.message||e)); }
   }
 
-  // Compute shared Y-domain from Targeted Seasonal logic
   const sharedYDomain = useMemo(()=>{
     if (!rows || !rows.length) return null;
     const vals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
@@ -376,13 +360,11 @@ export default function DashboardTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
-      {/* TOP: Classical forecasts multi-line */}
       <div style={{marginTop:16}}>
         <h2 style={{margin:"6px 0 10px"}}>Classical Forecasts (ARIMA, SES, HWES)</h2>
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
-      {/* BOTTOM: Targeted Seasonal Forecast (fv/low/high) */}
       <div style={{marginTop:24}}>
         <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast</h2>
         <SpecChart rows={rows} yDomain={sharedYDomain} />
