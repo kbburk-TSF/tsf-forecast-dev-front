@@ -254,6 +254,7 @@ function GreenZoneChart({ rows, yDomain }){
   const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
   const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
+  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
   const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
 
   const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
@@ -486,20 +487,16 @@ export default function DashboardTab(){
       </div>
 
       {/* 1) Unchanged top chart */}
-      <div style={{marginTop:16, padding:"0 24px"}}>
+      <div className="chart-wrap" style={{marginTop:16, paddingLeft:32, paddingRight:32}}>
+        <div style={{marginTop:16, padding:"0 24px"}}>
         <h2 style={{margin:"6px 0 10px"}}>Classical Forecasts (ARIMA, SES, HWES)</h2>
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
       {/* 2) Gold line only (with actuals) */}
-      <div style={{marginTop:24, padding:"0 24px"}}>
-        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Gold Line)</h2>
-        <GoldChart rows={rows} yDomain={sharedYDomain} />
-      </div>
-
-      {/* 3) Green zone only (with actuals) */}
-      <div style={{marginTop:24, padding:"0 24px"}}>
-        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Green Zone)</h2>
+      <div className="chart-wrap" style={{marginTop:24, paddingLeft:32, paddingRight:32}}>
+        <div className="chart-wrap" style={{marginTop:24, paddingLeft:32, paddingRight:32}}>
+        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast (Gold Line & Green Zone)</h2>
         <GreenZoneChart rows={rows} yDomain={sharedYDomain} />
       </div>
     </div>
