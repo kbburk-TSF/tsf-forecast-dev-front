@@ -1,14 +1,11 @@
 // src/tabs/DashboardTab.jsx
-// Top row: remap fv to ARIMA_M/HWES_M/SES_M and null out low/high, then pass to SpecChart.
-// Bottom row: pass rows unchanged.
-//
-// CHANGELOG (2025-09-25):
-// - SpecChart now measures its container width with ResizeObserver and renders to that width.
-//   This ensures each top-row chart shows the *entire* forecast horizontally inside a 3-col grid.
-// - Reduced chart height for the top-row use case (more compact).
-// - Calls/payload keys EXACTLY match backend /views routes (scope, model, series, forecast_id, date_from, date_to).
-// - Column names use UPPERCASE to match quoted identifiers in views.py ("ARIMA_M","HWES_M","SES_M").
-// - No changes to chart types or other logic.
+// CHANGES (2025-09-26):
+// - Replace 3 small top charts with ONE full-width multi-series chart showing ARIMA_M (red), SES_M (blue), HWES_M (purple).
+// - Add titles: Top = "Classical Forecasts (ARIMA, SES, HWES)", Bottom = "Targeted Seasonal Forecast".
+// - Bottom chart: interval polygon color changed to light green; fv line changed to gold.
+// - Legend box added back to BOTH charts.
+// - Kept payload/keys EXACTLY matching backend (/views). No changes to data plumbing.
+// - No changes to low/high semantics or preroll logic. Only rendering/layout tweaks requested.
 
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { listForecastIds, queryView } from "../api.js";
@@ -45,22 +42,36 @@ function useContainerWidth(){
   return [ref, w];
 }
 
-// ==== SpecChart (expects fv/low/high) ====
-function SpecChart({ rows }){
-  if (!rows || !rows.length) return null;
-
-  // Measure container width so the chart always fits its column precisely.
+// Shared chart math
+function useChartMath(rows){
   const [wrapRef, W] = useContainerWidth();
-
-  // Compact height for the top-row charts; still works for the bottom full-width chart.
-  const H = Math.max(260, Math.min(380, Math.round(W * 0.24))); // responsive height
-  const pad = { top: 24, right: 18, bottom: 96, left: 64 };
-  const N = rows.length, startIdx = 7;
+  const H = Math.max(300, Math.min(420, Math.round(W * 0.28))); // responsive height, full-width
+  const pad = { top: 28, right: 24, bottom: 96, left: 70 };
+  const N = (rows||[]).length;
+  const startIdx = 7; // preroll shading split
 
   const innerW = Math.max(1, W - pad.left - pad.right);
   const innerH = Math.max(1, H - pad.top - pad.bottom);
 
   const xScale = (i) => pad.left + (i) * (innerW) / Math.max(1, (N-1));
+  function niceTicks(min, max, count=6){
+    if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
+    const span = max - min; const step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    const err = (count * step) / span; let m = 1;
+    if (err <= 0.15) m = 10; else if (err <= 0.35) m = 5; else if (err <= 0.75) m = 2;
+    const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
+    const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
+  }
+  return { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks };
+}
+
+// ==== Single forecast chart (with fv/low/high) ====
+function SpecChart({ rows }){
+  if (!rows || !rows.length) return null;
+
+  const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
+
+  // y extents use value, low/high, fv
   const yVals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
   const yMin = yVals.length ? Math.min(...yVals) : 0;
   const yMax = yVals.length ? Math.max(...yVals) : 1;
@@ -78,20 +89,24 @@ function SpecChart({ rows }){
   const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
   const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
   const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
-
-  function niceTicks(min, max, count=6){
-    if (!isFinite(min) || !isFinite(max) || min===max) return [min||0, max||1];
-    const span = max - min; const step = Math.pow(10, Math.floor(Math.log10(span / count)));
-    const err = (count * step) / span; let m = 1;
-    if (err <= 0.15) m = 10; else if (err <= 0.35) m = 5; else if (err <= 0.75) m = 2;
-    const s = m * step, nmin = Math.floor(min/s)*s, nmax = Math.ceil(max/s)*s;
-    const out = []; for (let v=nmin; v<=nmax+1e-9; v+=s) out.push(v); return out;
-  }
   const yTicks = niceTicks(Y0, Y1, 6);
+
+  // Colors per new request
+  const intervalFill = "rgba(144,238,144,0.22)"; // light green
+  const fvColor = "#DAA520"; // gold
+
+  // Legend items
+  const legendItems = [
+    { label: "Historical", type: "line", stroke:"#000", dash:null, width:1.8 },
+    { label: "Historical (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
+    { label: "Forecast", type: "line", stroke:fvColor, dash:null, width:2.4 },
+    { label: "Interval", type: "box", fill:"rgba(144,238,144,0.22)", stroke:"#2ca02c" },
+  ];
 
   return (
     <div ref={wrapRef} style={{ width: "100%" }}>
       <svg width={W} height={H} style={{ display:"block", width:"100%" }}>
+        {/* axes */}
         <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
         <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
         {yTicks.map((v,i)=>(
@@ -100,19 +115,128 @@ function SpecChart({ rows }){
             <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
           </g>
         ))}
+        {/* preroll shading */}
         <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-        {polyStr && <polygon points={polyStr} fill="rgba(255,215,0,0.22)" stroke="none" />}
+        {/* interval polygon */}
+        {polyStr && <polygon points={polyStr} fill={intervalFill} stroke="none" />}
+        {/* series */}
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
         <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-        <path d={path(fvPts)}         fill="none" stroke="#1f77b4" strokeWidth={2.4}/>
+        <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
         <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
+        {/* x ticks */}
         {rows.map((r,i)=>(
           <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
             <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
             <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
           </g>
         ))}
+        {/* legend box */}
+        <g transform={`translate(${pad.left+8}, ${pad.top+8})`}>
+          <rect x={-8} y={-8} width={240} height={legendItems.length*20+16} fill="#fff" stroke="#ccc" rx="6" ry="6"/>
+          {legendItems.map((it,idx)=>{
+            const y = idx*20;
+            if (it.type==="line"){
+              return (
+                <g key={idx} transform={`translate(0, ${y})`}>
+                  <line x1={0} y1={6} x2={36} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/>
+                  <text x={44} y={10} fontSize="12" fill="#333">{it.label}</text>
+                </g>
+              );
+            } else {
+              return (
+                <g key={idx} transform={`translate(0, ${y})`}>
+                  <rect x={0} y={0} width={36} height={12} fill={it.fill} stroke={it.stroke||"#aaa"}/>
+                  <text x={44} y={10} fontSize="12" fill="#333">{it.label}</text>
+                </g>
+              );
+            }
+          })}
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+// ==== Multi-series chart for classical forecasts ====
+function MultiClassicalChart({ rows }){
+  if (!rows || !rows.length) return null;
+
+  const { wrapRef, W, H, pad, xScale, innerW, innerH, startIdx, niceTicks } = useChartMath(rows);
+
+  // y extents use value and three model series
+  const yVals = rows.flatMap(r => [r.value, r.ARIMA_M, r.SES_M, r.HWES_M]).filter(v => v!=null).map(Number);
+  const yMin = yVals.length ? Math.min(...yVals) : 0;
+  const yMax = yVals.length ? Math.max(...yVals) : 1;
+  const yPad = (yMax - yMin) * 0.08 || 1;
+  const Y0 = yMin - yPad, Y1 = yMax + yPad;
+  const yScale = v => pad.top + innerH * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
+
+  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
+
+  const makePts = (field) => rows.map((r,i) => (r[field]!=null && i >= startIdx) ? { i, y:Number(r[field]) } : null).filter(Boolean);
+  const arimaPts = makePts("ARIMA_M");
+  const sesPts   = makePts("SES_M");
+  const hwesPts  = makePts("HWES_M");
+
+  const yTicks = niceTicks(Y0, Y1, 6);
+
+  // Colors per request
+  const C_ARIMA = "#d62728"; // red
+  const C_SES   = "#1f77b4"; // blue
+  const C_HWES  = "#9467bd"; // purple
+
+  const legendItems = [
+    { label: "Historical", type: "line", stroke:"#000", dash:null, width:1.8 },
+    { label: "Historical (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
+    { label: "ARIMA_M", type: "line", stroke:C_ARIMA, dash:null, width:2.4 },
+    { label: "SES_M",   type: "line", stroke:C_SES,   dash:null, width:2.4 },
+    { label: "HWES_M",  type: "line", stroke:C_HWES,  dash:null, width:2.4 },
+  ];
+
+  return (
+    <div ref={wrapRef} style={{ width: "100%" }}>
+      <svg width={W} height={H} style={{ display:"block", width:"100%" }}>
+        {/* axes */}
+        <line x1={pad.left} y1={H-pad.bottom} x2={W-pad.right} y2={H-pad.bottom} stroke="#999"/>
+        <line x1={pad.left} y1={pad.top} x2={pad.left} y2={H-pad.bottom} stroke="#999"/>
+        {yTicks.map((v,i)=>(
+          <g key={i}>
+            <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
+            <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
+          </g>
+        ))}
+        {/* preroll shading */}
+        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
+        {/* series */}
+        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
+        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
+        <path d={path(arimaPts)}      fill="none" stroke={C_ARIMA} strokeWidth={2.4}/>
+        <path d={path(sesPts)}        fill="none" stroke={C_SES}   strokeWidth={2.4}/>
+        <path d={path(hwesPts)}       fill="none" stroke={C_HWES}  strokeWidth={2.4}/>
+        {/* x ticks */}
+        {rows.map((r,i)=>(
+          <g key={i} transform={`translate(${xScale(i)}, ${H-pad.bottom})`}>
+            <line x1={0} y1={0} x2={0} y2={6} stroke="#aaa"/>
+            <text x={10} y={0} fontSize="11" fill="#666" transform="rotate(90 10 0)" textAnchor="start">{fmtMDY(r.date)}</text>
+          </g>
+        ))}
+        {/* legend box */}
+        <g transform={`translate(${pad.left+8}, ${pad.top+8})`}>
+          <rect x={-8} y={-8} width={220} height={legendItems.length*20+16} fill="#fff" stroke="#ccc" rx="6" ry="6"/>
+          {legendItems.map((it,idx)=>{
+            const y = idx*20;
+            return (
+              <g key={idx} transform={`translate(0, ${y})`}>
+                <line x1={0} y1={6} x2={36} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/>
+                <text x={44} y={10} fontSize="12" fill="#333">{it.label}</text>
+              </g>
+            );
+          })}
+        </g>
       </svg>
     </div>
   );
@@ -202,14 +326,9 @@ export default function DashboardTab(){
     } catch(e){ setStatus(String(e.message||e)); }
   }
 
-  const mapTo = (rows, field) => (rows||[]).map(r => ({ ...r, fv: r[field] ?? null, low: null, high: null }));
-  const rowsARIMA = mapTo(rows, "ARIMA_M");
-  const rowsHWES  = mapTo(rows, "HWES_M");
-  const rowsSES   = mapTo(rows, "SES_M");
-
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Dashboard — ARIMA / HWES / SES + Full</h2>
+      <h2 style={{marginTop:0}}>Dashboard — Classical + Targeted Seasonal</h2>
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
@@ -237,13 +356,15 @@ export default function DashboardTab(){
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
 
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:"12px", marginTop:12}}>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>ARIMA_M</div><SpecChart rows={rowsARIMA} /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>HWES_M</div><SpecChart rows={rowsHWES} /></div>
-        <div><div style={{fontWeight:600, margin:"4px 0 8px"}}>SES_M</div><SpecChart rows={rowsSES} /></div>
+      {/* TOP: Classical forecasts multi-line */}
+      <div style={{marginTop:16}}>
+        <div style={{fontWeight:700, margin:"4px 0 8px"}}>Classical Forecasts (ARIMA, SES, HWES)</div>
+        <MultiClassicalChart rows={rows} />
       </div>
 
-      <div style={{marginTop:16}}>
+      {/* BOTTOM: Targeted Seasonal Forecast (fv/low/high) */}
+      <div style={{marginTop:24}}>
+        <div style={{fontWeight:700, margin:"4px 0 8px"}}>Targeted Seasonal Forecast</div>
         <SpecChart rows={rows} />
       </div>
     </div>
