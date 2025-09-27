@@ -1,6 +1,7 @@
 // Version bump for Git recognition: 2025-09-27 03:27:25
 // src/tabs/DashboardTab.jsx
 // CHANGES (2025-09-26, update 2):
+// Git bump: 2025-09-27 03:30:03
 // - Legends: text changed per request; moved below charts in a single line (horizontal), outside SVG.
 // - Bottom legend entries: "Targeted Seasonal Forecast" & "Green Zone Forecast Interval".
 // - FV line color tweaked to more yellow (#FFD700).
@@ -377,13 +378,13 @@ export default function DashboardTab(){
 
       {/* TOP: Classical forecasts multi-line */}
       <div style={{marginTop:16}}>
-        <div style={{fontWeight:700, margin:"4px 0 8px"}}>Classical Forecasts (ARIMA, SES, HWES)</div>
+        <h2 style={{margin:"6px 0 10px"}}>Classical Forecasts (ARIMA, SES, HWES)</h2>
         <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
       </div>
 
       {/* BOTTOM: Targeted Seasonal Forecast (fv/low/high) */}
       <div style={{marginTop:24}}>
-        <div style={{fontWeight:700, margin:"4px 0 8px"}}>Targeted Seasonal Forecast</div>
+        <h2 style={{margin:"6px 0 10px"}}>Targeted Seasonal Forecast</h2>
         <SpecChart rows={rows} yDomain={sharedYDomain} />
       </div>
     </div>
