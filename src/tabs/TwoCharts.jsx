@@ -335,8 +335,6 @@ export default function TwoCharts(){
 
   return (
     <div style={{width:"100%"}}>
-      <h2 style={{marginTop:0}}>Dashboard 2 — Classical + TSF (Green Zone)</h2>
-
       <div className="row" style={{alignItems:"end", flexWrap:"wrap"}}>
         <div>
           <label>Forecast (forecast_name)</label><br/>
