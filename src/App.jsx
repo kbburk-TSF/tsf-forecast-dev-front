@@ -10,21 +10,28 @@ import HwesChartTab from "./tabs/HwesChartTab.jsx";
 import SesChartTab from "./tabs/SesChartTab.jsx";
 import DashboardTab from "./tabs/DashboardTab.jsx";
 import DashboardTab2 from "./tabs/DashboardTab2.jsx";
-
-const TABS = [
-  { key:"connect",   label:"Connect" },
-  { key:"classical", label:"Classical Export" },
-  { key:"upload",    label:"Upload Historical" },
-  { key:"views",     label:"Views" },
-  { key:"charts",    label:"Charts" },
-  { key:"arima",     label:"ARIMA Chart" },
-  { key:"hwes",      label:"HWES Chart" },
-  { key:"ses",       label:"SES Chart" },
-  { key:"dashboard", label:"Dashboard" },
-  { key:"dashboard2", label:"Dashboard 2" },
-];
+import TwoCharts from "./tabs/TwoCharts.jsx";
 
 export default function App(){
+  // Direct URL bypass: if path is /twocharts, render that page with no nav or tabs.
+  const isTwoCharts = typeof window !== "undefined" && window.location && window.location.pathname.endsWith("/twocharts");
+  if (isTwoCharts) {
+    return <TwoCharts />;
+  }
+
+  const TABS = [
+    { key:"connect",   label:"Connect" },
+    { key:"classical", label:"Classical Export" },
+    { key:"upload",    label:"Upload Historical" },
+    { key:"views",     label:"Views" },
+    { key:"charts",    label:"Charts" },
+    { key:"arima",     label:"ARIMA Chart" },
+    { key:"hwes",      label:"HWES Chart" },
+    { key:"ses",       label:"SES Chart" },
+    { key:"dashboard", label:"Dashboard" },
+    { key:"dashboard2", label:"Dashboard 2" },
+  ];
+
   const [tab, setTab] = useState("dashboard");
   return (
     <div style={{padding:"12px 16px", width:"100vw"}}>
