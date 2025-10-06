@@ -5,7 +5,41 @@
 // - Historical actuals on all charts; bottom legend excludes High/Low items.
 
 import React, { useEffect, useMemo, useState, useRef, useLayoutEffect } from "react";
-import { listForecastIds, queryView } from "../api.js";
+
+// --- local backend helpers (no api.js) ---
+import { API_BASE } from "../env.js"; // optional
+const BACKEND = (
+  (typeof window !== "undefined" && window.__BACKEND_URL__) ||
+  (typeof API_BASE !== "undefined" && API_BASE) ||
+  "https://tsf-demand-back.onrender.com"
+).replace(/\/$/, "");
+
+async function __handle(res){
+  if(!res.ok){
+    let t=""; try{ t = await res.text(); } catch {}
+    throw new Error(`HTTP ${res.status}${t ? (": " + t) : ""}`);
+  }
+  return res.json();
+}
+async function __get(p){ return __handle(await fetch(`${BACKEND}${p}`)); }
+
+export async function listForecastIds(){
+  const data = await __get("/views/forecasts");
+  return Array.isArray(data) ? data.map(String) : [];
+}
+export async function listMonths(forecast_name){
+  const q = encodeURIComponent(String(forecast_name||""));
+  return await __get(`/views/months?forecast_name=${q}`);
+}
+export async function __postQuery(body){
+  const r = await fetch(`${BACKEND}/views/query`, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify(body||{})
+  });
+  return __handle(r);
+}
+
 
 // ==== helpers ====
 const MS_DAY = 86400000;
@@ -107,7 +141,7 @@ function MultiClassicalChart({ rows, yDomain }){
   if (yDomain && Number.isFinite(yDomain[0]) && Number.isFinite(yDomain[1])){
     [Y0, Y1] = yDomain;
   } else {
-    const yVals = rows.flatMap(r => [r.value, r.ARIMA_M, r.SES_M, r.HWES_M]).filter(v => v!=null).map(Number);
+    const yVals = rows.flatMap(r => [r.value, r["ARIMA_M"], r["SES_M"], r["HWES_M"]]).filter(v => v!=null).map(Number);
     const yMin = yVals.length ? Math.min(...yVals) : 0;
     const yMax = yVals.length ? Math.max(...yVals) : 1;
     const yPad = (yMax - yMin) * 0.08 || 1;
@@ -190,19 +224,30 @@ function GoldAndGreenZoneChart({ rows, yDomain }){
   const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
   const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
 
-  const bandTop = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.high))] : null).filter(Boolean);
-  const bandBot = rows.map((r,i) => (r.low!=null && r.high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.low))]  : null).filter(Boolean).reverse();
+  const bandTop = rows.map((r,i) => (r.ci95_low!=null && r.ci95_high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.ci95_high))] : null).filter(Boolean);
+  const bandBot = rows.map((r,i) => (r.ci95_low!=null && r.ci95_high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.ci95_low))]  : null).filter(Boolean).reverse();
   const polyStr = [...bandTop, ...bandBot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+  // ci90 polygon points
+  const band90Top = rows.map((r,i) => (r.ci90_low!=null && r.ci90_high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.ci90_high))] : null).filter(Boolean);
+  const band90Bot = rows.map((r,i) => (r.ci90_low!=null && r.ci90_high!=null && i >= startIdx) ? [xScale(i), yScale(Number(r.ci90_low))]  : null).filter(Boolean).reverse();
+  const polyStr90 = [...band90Top, ...band90Bot].map(([x,y]) => `${x.toFixed(2)},${y.toFixed(2)}`).join(" ");
+// ci95 boundary line points
+  const ci95HighPts = rows.map((r,i)=>(r.ci95_high!=null && i >= startIdx) ? { i, y:Number(r.ci95_high) } : null).filter(Boolean);
+  const ci95LowPts  = rows.map((r,i)=>(r.ci95_low !=null && i >= startIdx) ? { i, y:Number(r.ci95_low)  } : null).filter(Boolean);
+  const ci90HighPts = rows.map((r,i)=>(r.ci90_high!=null && i >= startIdx) ? { i, y:Number(r.ci90_high) } : null).filter(Boolean);
+  const ci90LowPts  = rows.map((r,i)=>(r.ci90_low !=null && i >= startIdx) ? { i, y:Number(r.ci90_low)  } : null).filter(Boolean);
   const yTicks = niceTicks(Y0, Y1, 6);
 
   const intervalFill = "rgba(144,238,144,0.22)";
+const intervalFill90 = "rgba(46, 204, 113, 0.32)";
   const fvColor = "#FFD700";
 
   const legendItems = [
     { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
     { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
     { label: "Targeted Seasonal Forecast", type: "line", stroke:fvColor, dash:null, width:2.4 },
-    { label: "Green Zone Forecast Interval", type: "box", fill:intervalFill, stroke:"#2ca02c" },
+    { label: "95% Confidence Interval", type: "box", fill:intervalFill, stroke:"#2ca02c" },
+{ label: "85% Confidence Interval", type: "box", fill:"rgba(46, 204, 113, 0.60)", stroke:"#2ca02c" },
   ];
 
   return (
@@ -218,6 +263,11 @@ function GoldAndGreenZoneChart({ rows, yDomain }){
         ))}
         <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
         {polyStr && <polygon points={polyStr} fill={intervalFill} stroke="none" />}
+{polyStr90 && <polygon points={polyStr90} fill={intervalFill90} stroke="none" />}
+<path d={path(ci95HighPts)} fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
+<path d={path(ci95LowPts)}  fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
+<path d={path(ci90HighPts)} fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
+<path d={path(ci90LowPts)}  fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
         <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
         <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
         <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
@@ -257,7 +307,7 @@ export default function DashboardTab2(){
   useEffect(() => {
     (async () => {
       try {
-        const list = await listForecastIds({ scope:"global", model:"", series:"" });
+        const list = await listForecastIds();
         const norm = (Array.isArray(list) ? list : []).map(x => (
           typeof x === "string" ? { id:x, name:x }
           : { id:String(x.id ?? x.value ?? x), name:String(x.name ?? x.label ?? x.id ?? x) }
@@ -272,14 +322,19 @@ export default function DashboardTab2(){
     if (!forecastId) return;
     (async () => {
       try {
-        setStatus("Scanning dates…");
-        const res = await queryView({ scope:"global", model:"", series:"", forecast_id: forecastId, date_from:null, date_to:null, page:1, page_size:20000 });
-        const dates = Array.from(new Set((res.rows||[]).map(r => r?.date).filter(Boolean))).sort();
-        const months = Array.from(new Set(dates.map(s => s.slice(0,7)))).sort();
-        setAllMonths(months);
-        if (months.length) setStartMonth(months[0] + "-01");
-        setStatus("");
-      } catch(e){ setStatus("Failed to scan dates: " + String(e.message||e)); }
+        setStatus("Loading months…");
+try {
+  const months = await listMonths(forecastId);
+  const __parseMonth = (m) => { const [y, mo] = String(m).split("-"); return Date.UTC(Number(y), Number(mo)-1, 1); };
+  const __sorted = (months||[]).slice().sort((a,b)=> __parseMonth(a) - __parseMonth(b));
+  const __last24 = __sorted.slice(-24);
+  setAllMonths(__last24);
+  if (__last24.length) setStartMonth(String(__last24[0]) + "-01");
+} catch (e) {
+  setError(e?.message||String(e));
+}
+setStatus("");
+} catch(e){ setStatus("Failed to scan dates: " + String(e.message||e)); }
     })();
   }, [forecastId]);
 
@@ -293,13 +348,7 @@ export default function DashboardTab2(){
       const preRollStart = new Date(start.getTime() - 7*MS_DAY);
       const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
 
-      const res = await queryView({
-        scope:"global", model:"", series:"",
-        forecast_id: String(forecastId),
-        date_from: ymd(preRollStart),
-        date_to: ymd(end),
-        page:1, page_size: 20000
-      });
+      const res = await __postQuery({ forecast_name:String(forecastId), month:String(startMonth).slice(0,7), span:Number(monthsCount) });
 
       const byDate = new Map();
       for (const r of (res.rows||[])){
@@ -313,11 +362,14 @@ export default function DashboardTab2(){
           date: d,
           value: r.value ?? null,
           fv: r.fv ?? null,
-          low: r.low ?? null,
+          low: r.low ?? null,  ci95_low: r.ci95_low ?? null,
+          ci95_high: r.ci95_high ?? null,
+          ci90_low: r.ci85_low ?? null,
+          ci90_high: r.ci85_high ?? null,
           high: r.high ?? null,
-          ARIMA_M: r.ARIMA_M ?? null,
-          HWES_M:  r.HWES_M  ?? null,
-          SES_M:   r.SES_M   ?? null
+          ARIMA_M: r["ARIMA_M"] ?? null,
+          HWES_M:  r["HWES_M"]  ?? null,
+          SES_M:   r["SES_M"]   ?? null
         };
       });
       setRows(strict);
@@ -327,7 +379,7 @@ export default function DashboardTab2(){
 
   const sharedYDomain = useMemo(()=>{
     if (!rows || !rows.length) return null;
-    const vals = rows.flatMap(r => [r.value, r.low, r.high, r.fv]).filter(v => v!=null).map(Number);
+    const vals = rows.flatMap(r => [r.ci95_low, r.ci95_high]).filter(v => v!=null).map(Number);
     if (!vals.length) return null;
     const minv = Math.min(...vals), maxv = Math.max(...vals);
     const pad = (maxv - minv) * 0.08 || 1;
