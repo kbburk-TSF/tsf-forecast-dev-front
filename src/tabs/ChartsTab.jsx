@@ -75,7 +75,7 @@ function useContainerWidth(){
 // Shared chart math
 function useChartMath(rows){
   const [wrapRef, W] = useContainerWidth();
-  const H = Math.max(220, Math.min(340, Math.round(W * 0.22))); // shorter responsive height (same as DashboardTab)
+  const H = Math.max(330, Math.min(510, Math.round(W * 0.33))); // 50% taller // shorter responsive height (same as DashboardTab)
   const pad = { top: 28, right: 24, bottom: 72, left: 70 };
   const N = (rows||[]).length;
   const startIdx = 0; // preroll days
