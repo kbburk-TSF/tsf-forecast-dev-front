@@ -114,14 +114,14 @@ function InlineLegend({ items }){
           if (it.type === "line"){
             return (
               <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
-                <svg width={46} height={12}><line x1={4} y1={6} x2={42} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/></svg>
+                <svg width={46} height={ 18 }><line x1={4} y1={6} x2={42} y2={6} stroke={it.stroke} strokeWidth={it.width} strokeDasharray={it.dash||null}/></svg>
                 <span style={{fontSize:12}}>{it.label}</span>
               </div>
             );
           } else {
             return (
               <div key={idx} style={{display:"flex", alignItems:"center", gap:8}}>
-                <svg width={46} height={12}><rect x={4} y={1} width={38} height={10} fill={it.fill} stroke={it.stroke||"#2ca02c"}/></svg>
+                <svg width={46} height={ 18 }><rect x={4} y={1} width={38} height={ 15 } fill={it.fill} stroke={it.stroke||"#2ca02c"}/></svg>
                 <span style={{fontSize:12}}>{it.label}</span>
               </div>
             );
