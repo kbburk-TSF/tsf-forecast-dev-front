@@ -78,7 +78,7 @@ function useChartMath(rows){
   const H = Math.max(220, Math.min(340, Math.round(W * 0.22))); // shorter responsive height (same as DashboardTab)
   const pad = { top: 28, right: 24, bottom: 72, left: 70 };
   const N = (rows||[]).length;
-  const startIdx = 7; // preroll days
+  const startIdx = 0; // preroll days
 
   const innerW = Math.max(1, W - pad.left - pad.right);
   const innerH = Math.max(1, H - pad.top - pad.bottom);
@@ -148,11 +148,7 @@ function MultiClassicalChart({ rows, yDomain }){
     Y0 = yMin - yPad; Y1 = yMax + yPad;
   }
   const yScale = v => pad.top + innerH * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
-  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
-
-  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const makePts = (field) => rows.map((r,i) => (r[field]!=null && i >= startIdx) ? { i, y:Number(r[field]) } : null).filter(Boolean);
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";const makePts = (field) => rows.map((r,i) => (r[field]!=null && i >= startIdx) ? { i, y:Number(r[field]) } : null).filter(Boolean);
   const arimaPts = makePts("ARIMA_M");
   const sesPts   = makePts("SES_M");
   const hwesPts  = makePts("HWES_M");
@@ -164,12 +160,9 @@ function MultiClassicalChart({ rows, yDomain }){
   const C_HWES  = "#9467bd";
 
   const legendItems = [
-    { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
-    { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
     { label: "ARIMA_M", type: "line", stroke:C_ARIMA, dash:null, width:2.4 },
     { label: "SES_M",   type: "line", stroke:C_SES,   dash:null, width:2.4 },
-    { label: "HWES_M",  type: "line", stroke:C_HWES,  dash:null, width:2.4 },
-  ];
+    { label: "HWES_M",  type: "line", stroke:C_HWES,  dash:null, width:2.4 }];
 
   return (
     <div ref={wrapRef} style={{ width: "100%" }}>
@@ -181,11 +174,7 @@ function MultiClassicalChart({ rows, yDomain }){
             <line x1={pad.left-5} y1={yScale(v)} x2={W-pad.right} y2={yScale(v)} stroke="#eee"/>
             <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
           </g>
-        ))}
-        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
-        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
-        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-        <path d={path(arimaPts)}      fill="none" stroke={C_ARIMA} strokeWidth={2.4}/>
+        ))}<path d={path(arimaPts)}      fill="none" stroke={C_ARIMA} strokeWidth={2.4}/>
         <path d={path(sesPts)}        fill="none" stroke={C_SES}   strokeWidth={2.4}/>
         <path d={path(hwesPts)}       fill="none" stroke={C_HWES}  strokeWidth={2.4}/>
         {rows.map((r,i)=>(
@@ -216,11 +205,7 @@ function GoldAndGreenZoneChart({ rows, yDomain }){
     Y0 = yMin - yPad; Y1 = yMax + yPad;
   }
   const yScale = v => pad.top + innerH * (1 - ((v - Y0) / Math.max(1e-9, (Y1 - Y0))));
-  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";
-
-  const histActualPts = rows.map((r,i) => (r.value!=null && i < startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const futActualPts  = rows.map((r,i) => (r.value!=null && i >= startIdx) ? { i, y:Number(r.value) } : null).filter(Boolean);
-  const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
+  const path = pts => pts.length ? pts.map((p,i)=>(i?"L":"M")+xScale(p.i)+" "+yScale(p.y)).join(" ") : "";const fvPts         = rows.map((r,i) => (r.fv!=null    && i >= startIdx) ? { i, y:Number(r.fv) }    : null).filter(Boolean);
   const lowPts        = rows.map((r,i) => (r.low!=null   && i >= startIdx) ? { i, y:Number(r.low) }   : null).filter(Boolean);
   const highPts       = rows.map((r,i) => (r.high!=null  && i >= startIdx) ? { i, y:Number(r.high) }  : null).filter(Boolean);
 
@@ -243,12 +228,9 @@ const intervalFill90 = "rgba(46, 204, 113, 0.32)";
   const fvColor = "#FFD700";
 
   const legendItems = [
-    { label: "Historical Values", type: "line", stroke:"#000", dash:null, width:1.8 },
-    { label: "Actuals (for comparison)", type: "line", stroke:"#000", dash:"4,6", width:2.4 },
     { label: "Targeted Seasonal Forecast", type: "line", stroke:fvColor, dash:null, width:2.4 },
     { label: "95% Confidence Interval", type: "box", fill:intervalFill, stroke:"#2ca02c" },
-{ label: "85% Confidence Interval", type: "box", fill:"rgba(46, 204, 113, 0.60)", stroke:"#2ca02c" },
-  ];
+{ label: "85% Confidence Interval", type: "box", fill:"rgba(46, 204, 113, 0.60)", stroke:"#2ca02c" }];
 
   return (
     <div ref={wrapRef} style={{ width: "100%" }}>
@@ -261,16 +243,12 @@ const intervalFill90 = "rgba(46, 204, 113, 0.32)";
             <text x={pad.left-10} y={yScale(v)+4} fontSize="11" fill="#666" textAnchor="end">{v}</text>
           </g>
         ))}
-        <rect x={xScale(0)} y={pad.top} width={Math.max(0, xScale(7)-xScale(0))} height={H-pad.top-pad.bottom} fill="rgba(0,0,0,0.08)"/>
         {polyStr && <polygon points={polyStr} fill={intervalFill} stroke="none" />}
 {polyStr90 && <polygon points={polyStr90} fill={intervalFill90} stroke="none" />}
 <path d={path(ci95HighPts)} fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
 <path d={path(ci95LowPts)}  fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
 <path d={path(ci90HighPts)} fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
-<path d={path(ci90LowPts)}  fill="none" stroke="#0f5c1a" strokeWidth={1.6}/>
-        <path d={path(histActualPts)} fill="none" stroke="#000" strokeWidth={1.8}/>
-        <path d={path(futActualPts)}  fill="none" stroke="#000" strokeWidth={2.4} strokeDasharray="4,6"/>
-        <path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
+<path d={path(ci90LowPts)}  fill="none" stroke="#0f5c1a" strokeWidth={1.6}/><path d={path(fvPts)}         fill="none" stroke={fvColor} strokeWidth={2.4}/>
         <path d={path(lowPts)}        fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         <path d={path(highPts)}       fill="none" stroke="#2ca02c" strokeWidth={1.8}/>
         {rows.map((r,i)=>(
@@ -299,9 +277,7 @@ export default function DashboardTab2(){
   const [ids, setIds] = useState([]);
   const [forecastId, setForecastId] = useState("");
   const [allMonths, setAllMonths] = useState([]);
-  const [startMonth, setStartMonth] = useState("");
-  const [monthsCount, setMonthsCount] = useState(1);
-  const [rows, setRows] = useState([]);
+  const [startMonth, setStartMonth] = useState("");const [rows, setRows] = useState([]);
   const [status, setStatus] = useState("");
 
   useEffect(() => {
@@ -346,16 +322,16 @@ setStatus("");
       setStatus("Loading…");
       const start = firstOfMonthUTC(parseYMD(startMonth));
       const preRollStart = new Date(start.getTime() - 7*MS_DAY);
-      const end = lastOfMonthUTC(addMonthsUTC(start, monthsCount-1));
+      const end = lastOfMonthUTC(addMonthsUTC(start, 0));
 
-      const res = await __postQuery({ forecast_name:String(forecastId), month:String(startMonth).slice(0,7), span:Number(monthsCount) });
+      const res = await __postQuery({ forecast_name:String(forecastId), month:String(startMonth).slice(0,7), span:1 });
 
       const byDate = new Map();
       for (const r of (res.rows||[])){
         if (!r || !r.date) continue;
         byDate.set(r.date, r);
       }
-      const days = daysBetweenUTC(preRollStart, end);
+      const days = daysBetweenUTC(start, end);
       const strict = days.map(d => {
         const r = byDate.get(d) || {};
         return {
@@ -401,14 +377,6 @@ setStatus("");
           <label>Start month</label><br/>
           <select className="input" value={startMonth} onChange={e=>setStartMonth(e.target.value)}>
             {monthOptions.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </select>
-        </div>
-        <div>
-          <label>Months to show</label><br/>
-          <select className="input" value={monthsCount} onChange={e=>setMonthsCount(Number(e.target.value))}>
-            <option value={1}>1</option>
-            <option value={2}>2</option>
-            <option value={3}>3</option>
           </select>
         </div>
         <div>
