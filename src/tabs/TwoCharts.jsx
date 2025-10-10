@@ -289,8 +289,8 @@ const intervalFill90 = "rgba(46, 204, 113, 0.32)";
 function ChartSection({ title, children, mt=16 }){
   return (
     <section style={{ marginTop: mt, paddingLeft: 32, paddingRight: 32 }}>
-
-      {children}
+      <h2 style={{margin:"6px 0 10px"}}>{title}</h2>
+{children}
     </section>
   );
 }
