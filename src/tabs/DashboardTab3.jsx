@@ -75,7 +75,7 @@ function useContainerWidth(){
 // Shared chart math
 function useChartMath(rows){
   const [wrapRef, W] = useContainerWidth();
-  const H = Math.max(220, Math.min(340, Math.round(W * 0.22))); // shorter responsive height (same as DashboardTab)
+  const H = Math.max(440, Math.min(680, Math.round(W * 0.44))); // shorter responsive height (same as DashboardTab)
   const pad = { top: 28, right: 24, bottom: 72, left: 70 };
   const N = (rows||[]).length;
   const startIdx = 0; // pre-roll removed
@@ -416,12 +416,7 @@ setStatus("");
         </div>
         <div className="muted" style={{marginLeft:12}}>{status}</div>
       </div>
-
-      <ChartSection title="Classical Forecasts (ARIMA, SES, HWES)" mt={16}>
-        <MultiClassicalChart rows={rows} yDomain={sharedYDomain} />
-      </ChartSection>
-
-      <ChartSection title="Targeted Seasonal Forecast (Gold Line & Green Zone)" mt={24}>
+<ChartSection title="Targeted Seasonal Forecast (Gold Line & Green Zone)" mt={24}>
         <GoldAndGreenZoneChart rows={rows} yDomain={sharedYDomain} />
       </ChartSection>
     </div>
