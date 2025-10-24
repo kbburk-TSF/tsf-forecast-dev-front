@@ -10,6 +10,7 @@ import HwesChartTab from "./tabs/HwesChartTab.jsx";
 import SesChartTab from "./tabs/SesChartTab.jsx";
 import DashboardTab from "./tabs/DashboardTab.jsx";
 import DashboardTab2 from "./tabs/DashboardTab2.jsx";
+import DashboardTab3 from "./tabs/DashboardTab3.jsx";
 import TwoCharts from "./tabs/TwoCharts.jsx";
 
 const TABS = [
@@ -22,7 +23,8 @@ const TABS = [
   { key: "hwes",      label: "HWES_M" },
   { key: "ses",       label: "SES_M" },
   { key: "dashboard", label: "Dashboard" },
-  { key: "dashboard2", label: "Dashboard 2" }
+  { key: "dashboard2", label: "Dashboard 2" },
+  { key: "dashboard3", label: "Dashboard 3" }
 ];
 
 function getTabFromUrl() {
@@ -113,6 +115,7 @@ export default function App() {
       {active === "ses"       && <SesChartTab />}
       {active === "dashboard" && <DashboardTab />}
       {active === "dashboard2" && <DashboardTab2 />}
+      {active === "dashboard3" && <DashboardTab3 />}
     </div>
   );
 }
